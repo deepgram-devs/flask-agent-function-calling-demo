@@ -434,11 +434,11 @@ class Speaker:
 
 
 def _play(audio_out, stream, stop, browser_output=False):
+    # Sequence counter for browser audio chunks
+    seq = 0
     while not stop.is_set():
         try:
             data = audio_out.sync_q.get(True, 0.05)
-            # Play audio through system speakers
-            stream.write(data)
 
             # If browser output is enabled, send audio to browser via WebSocket
             if browser_output and socketio:
@@ -446,10 +446,18 @@ def _play(audio_out, stream, stop, browser_output=False):
                     # Send audio data to browser clients with sample rate information
                     socketio.emit(
                         "audio_output",
-                        {"audio": data, "sampleRate": AGENT_AUDIO_SAMPLE_RATE},
+                        {
+                            "audio": data,
+                            "sampleRate": AGENT_AUDIO_SAMPLE_RATE,
+                            "seq": seq,
+                        },
                     )
+                    seq += 1
                 except Exception as e:
                     logger.error(f"Error sending audio to browser: {e}")
+
+            elif not browser_output and stream is not None:
+                stream.write(data)
         except queue.Empty:
             pass
 

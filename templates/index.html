@@ -738,6 +738,7 @@ async function loadAudioDevices() {
         let isAudioOutputPlaying = false;
         let nextPlayTime = 0; // Track when the next audio chunk should start
         let audioOutputSampleRate = 16000; // Default, will be updated from server
+        let lastSeq = -1; // Track last received audio sequence number
         
         // Function to play audio output received from the server
         function playAudioOutput(audioData, sampleRate) {
@@ -797,9 +798,9 @@ async function loadAudioDevices() {
                 const currentTime = audioOutputContext.currentTime;
                 const bufferDuration = audioBuffer.duration;
                 
-                // If nextPlayTime is in the past or too close to current time, start immediately
-                if (nextPlayTime <= currentTime + 0.01) {
-                    nextPlayTime = currentTime + 0.01; // Small buffer to prevent glitches
+                // If nextPlayTime is in the past or too close to current time, move it slightly ahead
+                if (nextPlayTime <= currentTime + 0.03) {
+                    nextPlayTime = currentTime + 0.03; // Small buffer to prevent glitches
                 }
                 
                 // Schedule the audio to start at the calculated time
@@ -807,12 +808,6 @@ async function loadAudioDevices() {
                 
                 // Update nextPlayTime for the next chunk
                 nextPlayTime += bufferDuration;
-                
-                // Clean up old scheduled times if they're getting too far ahead
-                const maxLookahead = 1.0; // Maximum 1 second lookahead
-                if (nextPlayTime > currentTime + maxLookahead) {
-                    nextPlayTime = currentTime + 0.1; // Reset with small buffer
-                }
                 
             } catch (err) {
                 console.error('Error scheduling audio buffer:', err);
@@ -825,6 +820,8 @@ async function loadAudioDevices() {
         function stopAudioOutput() {
             // Reset timing
             nextPlayTime = 0;
+            // Reset sequence tracking
+            lastSeq = -1;
             
             // Close the audio context to release resources
             if (audioOutputContext && audioOutputContext.state !== 'closed') {
@@ -838,6 +835,12 @@ async function loadAudioDevices() {
 
         socket.on('audio_output', (data) => {
             if (isActive) {
+                if (typeof data.seq === 'number') {
+                    if (lastSeq !== -1 && data.seq !== lastSeq + 1) {
+                        console.warn('Audio chunk out of order', { expected: lastSeq + 1, got: data.seq });
+                    }
+                    lastSeq = data.seq;
+                }
                 playAudioOutput(data.audio, data.sampleRate);
             }
         });

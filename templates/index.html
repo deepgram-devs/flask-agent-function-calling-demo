@@ -443,7 +443,9 @@ async function loadAudioDevices() {
                     const audioConstraints = {
                         // Use minimal constraints for better compatibility
                         echoCancellation: true,
-                        noiseSuppression: true
+                        noiseSuppression: true,
+                        channelCount: 1,
+                        sampleRate: { ideal: 16000 }
                     };
                     
                     // Add deviceId constraint if a specific device is selected
@@ -468,8 +470,8 @@ async function loadAudioDevices() {
                 
                 // Step 3: Create audio context and processing pipeline
                 try {
-                    // Create audio context
-                    audioContext = new (window.AudioContext || window.webkitAudioContext)();
+                    // Create audio context with low-latency preference
+                    audioContext = new (window.AudioContext || window.webkitAudioContext)({ latencyHint: 'interactive' });
                     console.log('AudioContext created with input sample rate:', audioContext.sampleRate);
                     
                     // Create microphone source
@@ -478,7 +480,7 @@ async function loadAudioDevices() {
                     
                     // Create script processor node for audio processing
                     // Note: ScriptProcessorNode is deprecated but has better browser support than AudioWorklet
-                    const bufferSize = 4096;
+                    const bufferSize = 1024;
                     processor = audioContext.createScriptProcessor(bufferSize, 1, 1);
                     console.log('Processor created with buffer size:', bufferSize);
                     
@@ -843,6 +845,11 @@ async function loadAudioDevices() {
                 }
                 playAudioOutput(data.audio, data.sampleRate);
             }
+        });
+
+        // Stop browser audio output immediately on server instruction (interruptions or end of speech)
+        socket.on('stop_audio_output', () => {
+            stopAudioOutput();
         });
 
         showLogsToggle.addEventListener('change', () => {

@@ -29,7 +29,7 @@ def read_documentation_files(docs_dir):
 VOICE = "aura-2-thalia-en"
 
 # audio settings
-USER_AUDIO_SAMPLE_RATE = 48000
+USER_AUDIO_SAMPLE_RATE = 16000
 USER_AUDIO_SECS_PER_CHUNK = 0.05
 USER_AUDIO_SAMPLES_PER_CHUNK = round(USER_AUDIO_SAMPLE_RATE * USER_AUDIO_SECS_PER_CHUNK)
 

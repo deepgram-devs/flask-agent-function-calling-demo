@@ -207,6 +207,8 @@ class VoiceAgent:
 
                         if message_type == "UserStartedSpeaking":
                             self.speaker.stop()
+                        elif message_type == "AgentAudioDone":
+                            self.speaker.stop()
                         elif message_type == "ConversationText":
                             # Emit the conversation text to the client
                             socketio.emit("conversation_update", message_json)
@@ -395,14 +397,19 @@ class Speaker:
         self.browser_output = browser_output
 
     def __enter__(self):
-        audio = pyaudio.PyAudio()
-        self._stream = audio.open(
-            format=pyaudio.paInt16,
-            channels=1,
-            rate=self.agent_audio_sample_rate,
-            input=False,
-            output=True,
-        )
+        # Only initialize PyAudio for system audio output, not browser output
+        if not self.browser_output:
+            audio = pyaudio.PyAudio()
+            self._stream = audio.open(
+                format=pyaudio.paInt16,
+                channels=1,
+                rate=self.agent_audio_sample_rate,
+                input=False,
+                output=True,
+            )
+        else:
+            self._stream = None
+            
         self._queue = janus.Queue()
         self._stop = threading.Event()
         self._thread = threading.Thread(
@@ -415,7 +422,8 @@ class Speaker:
     def __exit__(self, exc_type, exc_value, traceback):
         self._stop.set()
         self._thread.join()
-        self._stream.close()
+        if self._stream:
+            self._stream.close()
         self._stream = None
         self._queue = None
         self._thread = None
@@ -431,6 +439,19 @@ class Speaker:
                     self._queue.async_q.get_nowait()
                 except janus.QueueEmpty:
                     break
+        # Drain any items already in the sync queue to prevent further playback
+        if self._queue and hasattr(self._queue, "sync_q") and self._queue.sync_q is not None:
+            try:
+                while True:
+                    self._queue.sync_q.get_nowait()
+            except queue.Empty:
+                pass
+        # If using browser output, instruct clients to stop playback immediately
+        if self.browser_output and socketio:
+            try:
+                socketio.emit("stop_audio_output")
+            except Exception as e:
+                logger.error(f"Error emitting stop_audio_output: {e}")
 
 
 def _play(audio_out, stream, stop, browser_output=False):
@@ -684,8 +705,8 @@ def handle_start_voice_agent(data=None):
         if data:
             voice_agent.input_device_id = data.get("inputDeviceId")
             voice_agent.output_device_id = data.get("outputDeviceId")
-        # Start the voice agent in a background thread
-        socketio.start_background_task(target=run_async_voice_agent)
+        # Start the voice agent in a native OS thread to isolate asyncio from eventlet
+        threading.Thread(target=run_async_voice_agent, daemon=True).start()
 
 
 @socketio.on("stop_voice_agent")

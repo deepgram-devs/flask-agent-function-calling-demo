@@ -207,8 +207,6 @@ class VoiceAgent:
 
                         if message_type == "UserStartedSpeaking":
                             self.speaker.stop()
-                        elif message_type == "AgentAudioDone":
-                            self.speaker.stop()
                         elif message_type == "ConversationText":
                             # Emit the conversation text to the client
                             socketio.emit("conversation_update", message_json)

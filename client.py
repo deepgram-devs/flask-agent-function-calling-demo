@@ -10,6 +10,7 @@ import janus
 import queue
 import sys
 import time
+import audioop
 import requests
 from datetime import datetime
 from common.agent_functions import FUNCTION_MAP
@@ -729,9 +730,7 @@ def handle_audio_data(data):
         try:
             # Get the audio buffer and sample rate
             audio_buffer = data.get("audio")
-            sample_rate = data.get(
-                "sampleRate", 44100
-            )  # Default to 44.1kHz if not specified
+            sample_rate = data.get("sampleRate", 44100)  # Default to 44.1kHz if not specified
 
             if audio_buffer:
                 try:
@@ -766,10 +765,28 @@ def handle_audio_data(data):
                             )
                             return
 
+                    # Ensure whole 16-bit samples
+                    if len(audio_bytes) % 2 != 0:
+                        audio_bytes = audio_bytes[:-1]
+
+                    # Resample to 16k if needed (server-side fallback)
+                    original_len = len(audio_bytes)
+                    original_rate = int(sample_rate) if isinstance(sample_rate, (int, float)) else 44100
+                    resampled = False
+                    if original_rate != 16000:
+                        try:
+                            prev_state = getattr(handle_audio_data, "_ratecv_state", None)
+                            audio_bytes, state = audioop.ratecv(audio_bytes, 2, 1, original_rate, 16000, prev_state)
+                            handle_audio_data._ratecv_state = state
+                            sample_rate = 16000
+                            resampled = True
+                        except Exception as e:
+                            logger.warning(f"Server resample failed (rate {original_rate}->16000): {e}. Passing through original bytes.")
+
                     # Log the first time we receive audio data
                     if not hasattr(handle_audio_data, "first_log_done"):
                         logger.info(
-                            f"Received first browser audio chunk: {len(audio_bytes)} bytes, sample rate: {sample_rate}Hz"
+                            f"Received first browser audio chunk: in_len={original_len} bytes, in_rate={original_rate}Hz, out_len={len(audio_bytes)} bytes, out_rate={sample_rate}Hz, resampled={resampled}"
                         )
                         handle_audio_data.first_log_done = True
 

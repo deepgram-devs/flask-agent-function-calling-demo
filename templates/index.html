@@ -1,12 +1,11 @@
 <!DOCTYPE html>
 <html>
-<head>
-    <meta charset="utf-8">
-    <title>Voice Agent Debugger</title>
-    <script src="https://cdnjs.cloudflare.com/ajax/libs/socket.io/4.0.1/socket.io.js"></script>
-    <script src="{{ url_for('static', filename='syncscroll.js') }}"></script>
-    <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
-</head>
+    <head>
+        <meta charset="utf-8">
+        <title>Voice Agent Debugger</title>
+        <script src="https://cdnjs.cloudflare.com/ajax/libs/socket.io/4.0.1/socket.io.js"></script>
+        <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
+    </head>
 <body>
     <!-- Industry Selection Popup -->
     <div id="industryPopup" class="popup-overlay">
@@ -26,6 +25,10 @@
             <button id="industryButton" class="industry-button">Change Industry</button>
             <div id="status" class="status">Microphone: Not active</div>
             <div class="audio-controls">
+                <div class="device-select">
+                    <label for="languageSelect">Language:</label>
+                    <select id="languageSelect"></select>
+                </div>
                 <div class="device-select">
                     <label for="voiceModel">Voice Model:</label>
                     <select id="voiceModel"></select>
@@ -91,11 +94,11 @@
         <div class="columns-container">
             <div id="conversation" class="timeline column">
                 <h2>Conversation</h2>
-                <div id="conversationMessages" class="syncscroll" name="timeline"></div>
+                <div id="conversationMessages"></div>
             </div>
             <div id="logs" class="timeline column">
                 <h2>Logs</h2>
-                <div id="logMessages" class="syncscroll" name="timeline"></div>
+                <div id="logMessages"></div>
             </div>
         </div>
     </div>
@@ -104,6 +107,7 @@
         const socket = io();
         const startButton = document.getElementById('startButton');
         const industryButton = document.getElementById('industryButton');
+        const languageSelect = document.getElementById('languageSelect');
         const voiceModelSelect = document.getElementById('voiceModel');
         const industryPopup = document.getElementById('industryPopup');
         const industryList = document.getElementById('industryList');
@@ -115,6 +119,7 @@
         const showLogsToggle = document.getElementById('showLogs');
         const logsColumn = document.getElementById('logs');
         const inputSelect = document.getElementById('inputDevice');
+        // Scroll is managed programmatically to keep both columns pinned to bottom after updates
         let isActive = false;
         let currentGroup = null;
         let lastMessageTimestamp = null;
@@ -123,8 +128,11 @@
         const messageOrder = []; // Keep track of message order
         let currentIndustry = 'deepgram'; // Default industry
         let currentIndustryName = 'Deepgram'; // Default industry name
+        let currentLanguage = 'en'; // Synced with selected voice model for agent config
         let currentVoiceModel = 'aura-2-thalia-en'; // Default voice model
         let currentVoiceName = ''; // Will be populated from the model name
+        let allTTSModels = []; // Full list from API; voice model list filtered by language
+        let lastLogElement = null; // Track the last real log entry element
 
         // Populate audio devices
 async function loadAudioDevices() {
@@ -177,10 +185,52 @@ async function loadAudioDevices() {
         navigator.mediaDevices.addEventListener('devicechange', loadAudioDevices);
         loadAudioDevices();
         
-        // Load TTS models
+        // Load TTS models (and derive languages for dropdown)
         loadTTSModels();
         
-        // Function to load TTS models from the API
+        // Populate voice model dropdown with models for the given language
+        function populateVoiceModelsForLanguage(lang) {
+            voiceModelSelect.innerHTML = '';
+            const modelsForLang = (allTTSModels || []).filter(m => (m.language || 'en') === lang);
+            modelsForLang.forEach(model => {
+                if (!model.name) return;
+                const option = document.createElement('option');
+                option.value = model.name;
+                let displayName = model.display_name || model.name;
+                displayName = displayName.charAt(0).toUpperCase() + displayName.slice(1);
+                let description = model.accent ? model.accent + ' accent' : '';
+                let optionText = displayName;
+                if (model.language) optionText += ' (' + model.language + ')';
+                if (description) optionText += ' - ' + description;
+                option.text = optionText;
+                option.dataset.voiceName = displayName;
+                option.dataset.language = model.language || 'en';
+                if (model.tags) option.title = model.tags;
+                voiceModelSelect.appendChild(option);
+            });
+            if (voiceModelSelect.options.length > 0) {
+                let found = false;
+                if (currentVoiceModel) {
+                    for (let i = 0; i < voiceModelSelect.options.length; i++) {
+                        if (voiceModelSelect.options[i].value === currentVoiceModel) {
+                            voiceModelSelect.selectedIndex = i;
+                            currentVoiceName = voiceModelSelect.options[i].dataset.voiceName;
+                            currentLanguage = voiceModelSelect.options[i].dataset.language || 'en';
+                            found = true;
+                            break;
+                        }
+                    }
+                }
+                if (!found) {
+                    voiceModelSelect.selectedIndex = 0;
+                    currentVoiceModel = voiceModelSelect.options[0].value;
+                    currentVoiceName = voiceModelSelect.options[0].dataset.voiceName;
+                    currentLanguage = voiceModelSelect.options[0].dataset.language || 'en';
+                }
+            }
+        }
+        
+        // Function to load TTS models from the API and build language dropdown
         function loadTTSModels() {
             fetch('/tts-models')
                 .then(response => response.json())
@@ -189,81 +239,45 @@ async function loadAudioDevices() {
                         console.error('Error loading TTS models:', data.error);
                         return;
                     }
-                    
-                    // Clear existing options
-                    voiceModelSelect.innerHTML = '';
-                    
-                    // Add options for each model
-                    data.models.forEach(model => {
-                        if (!model.name) return; // Skip if no name
-                        
-                        const option = document.createElement('option');
-                        option.value = model.name; // Use canonical_name as the value
-                        
-                        // Get a display name for the voice
-                        let displayName = model.display_name || model.name;
-                        displayName = displayName.charAt(0).toUpperCase() + displayName.slice(1);
-                        
-                        // Create descriptive text
-                        let description = '';
-                        if (model.accent) {
-                            description += model.accent + ' accent';
-                        }
-                        
-                        // Set the display text
-                        let optionText = displayName;
-                        if (model.language) {
-                            optionText += ' (' + model.language + ')';
-                        }
-                        if (description) {
-                            optionText += ' - ' + description;
-                        }
-                        option.text = optionText;
-                        
-                        // Store the voice name for later use
-                        option.dataset.voiceName = displayName;
-                        
-                        // Add tooltip with tags if available
-                        if (model.tags) {
-                            option.title = model.tags;
-                        }
-                        
-                        voiceModelSelect.appendChild(option);
+                    allTTSModels = (data.models || []).filter(m => m.name);
+                    const langSet = new Set();
+                    allTTSModels.forEach(m => { langSet.add(m.language || 'en'); });
+                    const languages = Array.from(langSet).sort();
+                    languageSelect.innerHTML = '';
+                    languages.forEach(lang => {
+                        const opt = document.createElement('option');
+                        opt.value = lang;
+                        opt.textContent = lang;
+                        languageSelect.appendChild(opt);
                     });
-                    
-                    // Set default selection if available
-                    if (voiceModelSelect.options.length > 0) {
-                        // If we have a current model, try to select it
-                        let found = false;
-                        if (currentVoiceModel) {
-                            for (let i = 0; i < voiceModelSelect.options.length; i++) {
-                                if (voiceModelSelect.options[i].value === currentVoiceModel) {
-                                    voiceModelSelect.selectedIndex = i;
-                                    currentVoiceName = voiceModelSelect.options[i].dataset.voiceName;
-                                    found = true;
-                                    break;
-                                }
-                            }
-                        }
-                        
-                        // If not found or no current model, select the first one
-                        if (!found) {
-                            voiceModelSelect.selectedIndex = 0;
-                            currentVoiceModel = voiceModelSelect.options[0].value;
-                            currentVoiceName = voiceModelSelect.options[0].dataset.voiceName;
-                        }
+                    if (languages.length > 0 && !languages.includes(currentLanguage)) {
+                        currentLanguage = languages[0];
                     }
+                    if (languages.length > 0) {
+                        const idx = languages.indexOf(currentLanguage);
+                        languageSelect.selectedIndex = idx >= 0 ? idx : 0;
+                        currentLanguage = languageSelect.value;
+                    }
+                    populateVoiceModelsForLanguage(currentLanguage);
                 })
                 .catch(error => {
                     console.error('Error fetching TTS models:', error);
                 });
         }
         
-        // Voice model selection handler
+        // Language selection: filter voice models to selected language
+        languageSelect.addEventListener('change', function() {
+            currentLanguage = this.value;
+            populateVoiceModelsForLanguage(currentLanguage);
+        });
+        
+        // Voice model selection: keep agent language in sync with model's language
         voiceModelSelect.addEventListener('change', function() {
             currentVoiceModel = this.value;
             const selectedOption = this.options[this.selectedIndex];
             currentVoiceName = selectedOption.dataset.voiceName;
+            currentLanguage = selectedOption.dataset.language || 'en';
+            languageSelect.value = currentLanguage;
         });
         
         // Initialize industry display
@@ -371,12 +385,13 @@ async function loadAudioDevices() {
                     console.log('Audio capture started successfully, starting voice agent...');
                     statusDiv.textContent = 'Starting voice agent...';
                     
-                    // Now start the voice agent on the server
+                    // Now start the voice agent on the server (language synced with selected voice model)
                     socket.emit('start_voice_agent', {
                         inputDeviceId: inputSelect.value,
                         industry: currentIndustry,
                         voiceModel: currentVoiceModel,
                         voiceName: currentVoiceName,
+                        language: currentLanguage,
                         browserAudio: true // Flag to indicate browser is handling audio
                     });
                     
@@ -403,6 +418,35 @@ async function loadAudioDevices() {
         let mediaStream;
         let processor;
         let microphone;
+        
+        // Helpers: Float32 -> Int16 and resample to 16kHz
+        function floatToInt16(float32) {
+            const out = new Int16Array(float32.length);
+            for (let i = 0; i < float32.length; i++) {
+                const s = Math.max(-1, Math.min(1, float32[i]));
+                out[i] = s < 0 ? Math.round(s * 32768) : Math.round(s * 32767);
+            }
+            return out;
+        }
+
+        // Linear interpolation resampler to 16 kHz for streaming chunks
+        function resampleFloatToInt16_16k(input, inSampleRate) {
+            const target = 16000;
+            if (!inSampleRate || inSampleRate === target) return floatToInt16(input);
+            const ratio = inSampleRate / target;
+            const newLen = Math.max(1, Math.round(input.length / ratio));
+            const out = new Int16Array(newLen);
+            for (let i = 0; i < newLen; i++) {
+                const idx = i * ratio;
+                const i0 = Math.floor(idx);
+                const i1 = Math.min(i0 + 1, input.length - 1);
+                const frac = idx - i0;
+                const sample = input[i0] + (input[i1] - input[i0]) * frac;
+                const s = Math.max(-1, Math.min(1, sample));
+                out[i] = s < 0 ? Math.round(s * 32768) : Math.round(s * 32767);
+            }
+            return out;
+        }
         
         async function requestMicrophonePermission() {
             try {
@@ -443,7 +487,9 @@ async function loadAudioDevices() {
                     const audioConstraints = {
                         // Use minimal constraints for better compatibility
                         echoCancellation: true,
-                        noiseSuppression: true
+                        noiseSuppression: true,
+                        channelCount: 1,
+                        sampleRate: { ideal: 16000 }
                     };
                     
                     // Add deviceId constraint if a specific device is selected
@@ -451,25 +497,34 @@ async function loadAudioDevices() {
                         audioConstraints.deviceId = { exact: deviceId };
                     }
                     
-                    // Stop the initial stream
-                    stream.getTracks().forEach(track => track.stop());
-                    
                     // Get the audio stream with our desired constraints
                     mediaStream = await navigator.mediaDevices.getUserMedia({
                         audio: audioConstraints
                     });
                     
                     console.log('MediaStream obtained successfully with constraints');
+                    try {
+                        const t = mediaStream.getAudioTracks && mediaStream.getAudioTracks()[0];
+                        const settings = t && t.getSettings ? t.getSettings() : null;
+                        console.log('Microphone track settings:', settings);
+                    } catch(_) {}
+                    
+                    // We successfully obtained a new constrained stream; stop the initial permission stream
+                    try { stream.getTracks().forEach(track => track.stop()); } catch(_) {}
                 } catch (constraintErr) {
                     console.error('Error with audio constraints, falling back to basic stream:', constraintErr);
                     // If constraints fail, use the original stream
-                    mediaStream = stream;
+                    mediaStream = stream; // keep original stream active (not stopped)
                 }
                 
                 // Step 3: Create audio context and processing pipeline
                 try {
-                    // Create audio context
-                    audioContext = new (window.AudioContext || window.webkitAudioContext)();
+                    // Create audio context with low-latency preference
+                    audioContext = new (window.AudioContext || window.webkitAudioContext)({ latencyHint: 'interactive' });
+                    // Ensure the context is running
+                    if (audioContext.state === 'suspended') {
+                        try { await audioContext.resume(); } catch (_) {}
+                    }
                     console.log('AudioContext created with input sample rate:', audioContext.sampleRate);
                     
                     // Create microphone source
@@ -478,33 +533,38 @@ async function loadAudioDevices() {
                     
                     // Create script processor node for audio processing
                     // Note: ScriptProcessorNode is deprecated but has better browser support than AudioWorklet
-                    const bufferSize = 4096;
+                    const bufferSize = 1024;
                     processor = audioContext.createScriptProcessor(bufferSize, 1, 1);
                     console.log('Processor created with buffer size:', bufferSize);
                     
                     // Connect the nodes
                     microphone.connect(processor);
-                    processor.connect(audioContext.destination);
+                    // Route to a zero-gain sink to avoid audible mic playback while keeping processor active
+                    const zeroGainNode = audioContext.createGain();
+                    zeroGainNode.gain.value = 0.0;
+                    processor.connect(zeroGainNode);
+                    zeroGainNode.connect(audioContext.destination);
                     
                     // Process audio data
                     processor.onaudioprocess = function(e) {
                         if (!isActive) return;
                         
-                        // Get the audio data from the input channel
+                        // Get input mono channel
                         const inputData = e.inputBuffer.getChannelData(0);
+                        const inRate = audioContext.sampleRate;
                         
-                        // Convert to Int16 format for better compatibility with server-side processing
-                        const pcmData = new Int16Array(inputData.length);
-                        for (let i = 0; i < inputData.length; i++) {
-                            // Convert from [-1.0, 1.0] to [-32768, 32767]
-                            pcmData[i] = Math.max(-32768, Math.min(32767, Math.floor(inputData[i] * 32767)));
+                        // Resample to 16 kHz and convert to Int16 for server-side compatibility
+                        let pcm16;
+                        if (inRate !== 16000) {
+                            pcm16 = resampleFloatToInt16_16k(inputData, inRate);
+                        } else {
+                            pcm16 = floatToInt16(inputData);
                         }
                         
-                        // Send the audio data to the server
-                        // Using binary transfer mode with Socket.IO
+                        // Send the audio data to the server (binary transfer via Socket.IO)
                         socket.emit('audio_data', {
-                            audio: pcmData,
-                            sampleRate: audioContext.sampleRate
+                            audio: pcm16.buffer,
+                            sampleRate: 16000
                         });
                     };
                     
@@ -560,8 +620,19 @@ async function loadAudioDevices() {
 
         function scrollToBottom() {
             requestAnimationFrame(() => {
+                // Always pin conversation to bottom
                 conversationMessages.scrollTop = conversationMessages.scrollHeight;
-                logMessages.scrollTop = logMessages.scrollHeight;
+
+                // For logs, prefer to keep the last real log visible near the bottom
+                if (lastLogElement && logMessages.contains(lastLogElement)) {
+                    const lastTop = lastLogElement.offsetTop;
+                    const desired = lastTop - (logMessages.clientHeight - lastLogElement.offsetHeight);
+                    const maxScroll = Math.max(0, logMessages.scrollHeight - logMessages.clientHeight);
+                    logMessages.scrollTop = Math.min(Math.max(desired, 0), maxScroll);
+                } else {
+                    // Fallback: bottom
+                    logMessages.scrollTop = logMessages.scrollHeight;
+                }
             });
         }
 
@@ -577,19 +648,23 @@ async function loadAudioDevices() {
             messageDiv.dataset.messageId = currentCounter;
             
             insertTimelineItem(messageDiv, timestamp, conversationMessages);
-            
-            // Create a spacer in the log column
-            const logSpacer = createSpacer(messageDiv.offsetHeight);
-            logSpacer.dataset.messageId = currentCounter;
-            insertTimelineItem(logSpacer, timestamp, logMessages);
-            
-            if (!showLogsToggle.checked) {
-                logSpacer.style.display = 'none';
-                logSpacer.style.height = '0';
-            }
-            
-            syncscroll.reset();
-            scrollToBottom();
+
+            // Measure after layout to get accurate height, then create matching spacer
+            requestAnimationFrame(() => {
+                const actualHeight = messageDiv.offsetHeight;
+                messageHeights.set(currentCounter, actualHeight);
+
+                const logSpacer = createSpacer(actualHeight);
+                logSpacer.dataset.messageId = currentCounter;
+                insertTimelineItem(logSpacer, timestamp, logMessages);
+
+                if (!showLogsToggle.checked) {
+                    logSpacer.style.display = 'none';
+                    logSpacer.style.height = '0';
+                }
+
+                scrollToBottom();
+            });
         }
 
         socket.on('conversation_update', (data) => {
@@ -617,7 +692,6 @@ async function loadAudioDevices() {
                     logSpacer.style.height = '0';
                 }
                 
-                syncscroll.reset();
                 scrollToBottom();
             });
         });
@@ -647,33 +721,13 @@ async function loadAudioDevices() {
                     conversationSpacer.style.height = '0';
                 }
                 
-                syncscroll.reset();
                 scrollToBottom();
             });
         });
 
         function insertTimelineItem(element, timestamp, container) {
-            const time = new Date(timestamp);
-            
-            // Find the correct position to insert the new element
-            const items = container.children;
-            let insertPosition = container.childNodes.length;
-            
-            for (let i = 0; i < items.length; i++) {
-                const itemTime = new Date(items[i].dataset.timestamp);
-                if (time < itemTime) {
-                    insertPosition = i;
-                    break;
-                }
-            }
-            
             element.dataset.timestamp = timestamp;
-            
-            if (insertPosition === container.childNodes.length) {
-                container.appendChild(element);
-            } else {
-                container.insertBefore(element, items[insertPosition]);
-            }
+            container.appendChild(element);
         }
 
         function convertAnsiToHtml(text) {
@@ -845,50 +899,65 @@ async function loadAudioDevices() {
             }
         });
 
+        // Stop browser audio output immediately on server instruction (interruptions or end of speech)
+        socket.on('stop_audio_output', () => {
+            stopAudioOutput();
+        });
+
         showLogsToggle.addEventListener('change', () => {
             logsColumn.style.display = showLogsToggle.checked ? 'flex' : 'none';
-            
+
             if (showLogsToggle.checked) {
-                // Process messages in chronological order
-                messageOrder.sort((a, b) => new Date(a.timestamp) - new Date(b.timestamp));
-                
-                // First reset all spacers
-                const allSpacers = document.querySelectorAll('.timeline-spacer');
-                allSpacers.forEach(spacer => {
-                    spacer.style.display = 'block';
-                    const messageId = spacer.dataset.messageId;
-                    const height = messageHeights.get(parseInt(messageId));
-                    if (height) {
+                // After layout changes (column widths), re-measure all message heights
+                requestAnimationFrame(() => {
+                    // Update heights for conversation messages
+                    conversationMessages.querySelectorAll('.timeline-item.message').forEach(el => {
+                        const id = parseInt(el.dataset.messageId);
+                        if (!isNaN(id)) {
+                            messageHeights.set(id, el.offsetHeight);
+                        }
+                    });
+
+                    // Update heights for log messages
+                    logMessages.querySelectorAll('.timeline-item.log-message').forEach(el => {
+                        const id = parseInt(el.dataset.messageId);
+                        if (!isNaN(id)) {
+                            messageHeights.set(id, el.offsetHeight);
+                        }
+                    });
+
+                    // Ensure spacers are visible with correct heights
+                    const allSpacers = document.querySelectorAll('.timeline-spacer');
+                    allSpacers.forEach(spacer => {
+                        spacer.style.display = 'block';
+                        const messageId = parseInt(spacer.dataset.messageId);
+                        const height = messageHeights.get(messageId) || 0;
                         spacer.style.height = `${height}px`;
-                    }
-                });
-                
-                messageOrder.forEach(message => {
-                    const height = messageHeights.get(message.id);
-                    if (height) {
-                        const logItem = logMessages.querySelector(`[data-message-id="${message.id}"]`);
-                        const conversationItem = conversationMessages.querySelector(`[data-message-id="${message.id}"]`);
-                        
-                        if (logItem && conversationItem) {
-                            if (message.type === 'log') {
-                                logItem.style.display = 'block';
-                                if (conversationItem.classList.contains('timeline-spacer')) {
-                                    conversationItem.style.display = 'block';
-                                    conversationItem.style.height = `${height}px`;
-                                }
-                            } else {
-                                conversationItem.style.display = 'block';
-                                if (logItem.classList.contains('timeline-spacer')) {
-                                    logItem.style.display = 'block';
-                                    logItem.style.height = `${height}px`;
-                                }
+                    });
+
+                    // Make sure each message has its counterpart spacer visible with matched height
+                    messageOrder.sort((a, b) => new Date(a.timestamp) - new Date(b.timestamp));
+                    messageOrder.forEach(message => {
+                        const height = messageHeights.get(message.id) || 0;
+                        const logEl = logMessages.querySelector(`[data-message-id="${message.id}"]`);
+                        const convoEl = conversationMessages.querySelector(`[data-message-id="${message.id}"]`);
+
+                        if (message.type === 'log') {
+                            if (logEl) logEl.style.display = 'block';
+                            if (convoEl && convoEl.classList.contains('timeline-spacer')) {
+                                convoEl.style.display = 'block';
+                                convoEl.style.height = `${height}px`;
+                            }
+                        } else { // conversation
+                            if (convoEl) convoEl.style.display = 'block';
+                            if (logEl && logEl.classList.contains('timeline-spacer')) {
+                                logEl.style.display = 'block';
+                                logEl.style.height = `${height}px`;
                             }
                         }
-                    }
-                });
-                
-                requestAnimationFrame(() => {
-                    syncscroll.reset();
+                    });
+
+                    scrollToBottom();
                 });
             } else {
                 const allSpacers = document.querySelectorAll('.timeline-spacer');

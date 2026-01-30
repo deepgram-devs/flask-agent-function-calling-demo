@@ -135,6 +135,34 @@ Key settings in `config.py`:
 - `ARTIFICIAL_DELAY`: Configurable delays for database operations
 - `MOCK_DATA_SIZE`: Control size of generated test data
 
+## Deploy to Fly.io
+
+1. **Install the Fly CLI** (if needed): [fly.io/docs/hands-on/install-flyctl](https://fly.io/docs/hands-on/install-flyctl)
+
+2. **Log in** (from the project root):
+   ```bash
+   fly auth login
+   ```
+
+3. **Set your Deepgram API key as a secret** (required for TTS/voice agent):
+   ```bash
+   fly secrets set DEEPGRAM_API_KEY=your-deepgram-api-key-here
+   ```
+
+4. **Deploy**:
+   ```bash
+   fly deploy
+   ```
+   On first deploy, Fly creates the app from `fly.toml` if it doesn’t exist yet.
+
+5. **Open the app**:
+   ```bash
+   fly open
+   ```
+
+- App name and region are in `fly.toml` (`app = 'deepgram-agent-demo'`, `primary_region = 'sjc'`). Change them if you prefer.
+- To view logs: `fly logs`
+- To scale or change VM size: adjust `[[vm]]` in `fly.toml` and redeploy.
 
 ## Issue Reporting
 

@@ -26,10 +26,12 @@ def read_documentation_files(docs_dir):
             print(f"Error reading {file_path}: {e}")
 
     return documentation
+
+
 VOICE = "aura-2-thalia-en"
 
 # audio settings
-USER_AUDIO_SAMPLE_RATE = 48000
+USER_AUDIO_SAMPLE_RATE = 16000
 USER_AUDIO_SECS_PER_CHUNK = 0.05
 USER_AUDIO_SAMPLES_PER_CHUNK = round(USER_AUDIO_SAMPLE_RATE * USER_AUDIO_SECS_PER_CHUNK)
 
@@ -86,6 +88,87 @@ AGENT_SETTINGS = {
 
 SETTINGS = {"type": "Settings", "audio": AUDIO_SETTINGS, "agent": AGENT_SETTINGS}
 
+# Translated welcome message templates: {voiceName}, {company}, {capabilities}
+# Languages supported: en (American, British, Australian, Irish, Filipino), es (Mexican, Peninsular, Colombian, Latin American), de, fr, nl, it, ja
+WELCOME_MESSAGES = {
+    "en": "Hello! I'm {voiceName} from {company} customer service. {capabilities} How can I help you today?",
+    "es": "¡Hola! Soy {voiceName} del servicio al cliente de {company}. {capabilities} ¿Cómo puedo ayudarte hoy?",
+    "de": "Hallo! Ich bin {voiceName} vom Kundenservice von {company}. {capabilities} Wie kann ich Ihnen heute helfen?",
+    "fr": "Bonjour ! Je suis {voiceName} du service client de {company}. {capabilities} Comment puis-je vous aider aujourd'hui ?",
+    "nl": "Hallo! Ik ben {voiceName} van de klantenservice van {company}. {capabilities} Hoe kan ik u vandaag helpen?",
+    "it": "Ciao! Sono {voiceName} del servizio clienti di {company}. {capabilities} Come posso aiutarti oggi?",
+    "ja": "こんにちは！{company}のカスタマーサービス担当の{voiceName}です。{capabilities}本日はどのようなご用件でしょうか？",
+}
+
+# Single capabilities template per language: "I can help you answer questions about {topic}."
+CAPABILITY_TEMPLATES = {
+    "en": "I can help you answer questions about {topic}.",
+    "es": "Puedo ayudarte a responder preguntas sobre {topic}.",
+    "de": "Ich kann Ihnen bei Fragen zu {topic} helfen.",
+    "fr": "Je peux vous aider à répondre à vos questions sur {topic}.",
+    "nl": "Ik kan u helpen met vragen over {topic}.",
+    "it": "Posso aiutarti a rispondere a domande su {topic}.",
+    "ja": "{topic}に関するご質問にお答えします。",
+}
+
+# Topic name per industry per language (plugged into CAPABILITY_TEMPLATES)
+CAPABILITY_TOPICS = {
+    "deepgram": {
+        "en": "Deepgram",
+        "es": "Deepgram",
+        "de": "Deepgram",
+        "fr": "Deepgram",
+        "nl": "Deepgram",
+        "it": "Deepgram",
+        "ja": "Deepgram",
+    },
+    "healthcare": {
+        "en": "healthcare",
+        "es": "atención médica",
+        "de": "Gesundheitsversorgung",
+        "fr": "soins de santé",
+        "nl": "gezondheidszorg",
+        "it": "assistenza sanitaria",
+        "ja": "ヘルスケア",
+    },
+    "banking": {
+        "en": "banking",
+        "es": "banca",
+        "de": "Bankwesen",
+        "fr": "banque",
+        "nl": "bankzaken",
+        "it": "banking",
+        "ja": "銀行業務",
+    },
+    "pharmaceuticals": {
+        "en": "pharmaceuticals",
+        "es": "productos farmacéuticos",
+        "de": "Arzneimittel",
+        "fr": "produits pharmaceutiques",
+        "nl": "farmaceutische producten",
+        "it": "prodotti farmaceutici",
+        "ja": "医薬品",
+    },
+    "retail": {
+        "en": "retail",
+        "es": "retail",
+        "de": "Einzelhandel",
+        "fr": "vente au détail",
+        "nl": "retail",
+        "it": "vendita al dettaglio",
+        "ja": "小売",
+    },
+    "travel": {
+        "en": "travel",
+        "es": "viajes",
+        "de": "Reisen",
+        "fr": "voyages",
+        "nl": "reizen",
+        "it": "viaggi",
+        "ja": "旅行",
+    },
+}
+
 
 class AgentTemplates:
     def __init__(
@@ -93,6 +176,7 @@ class AgentTemplates:
         industry="deepgram",
         voiceModel="aura-2-thalia-en",
         voiceName="",
+        language="en",
         docs_dir="deepgram-docs/fern/docs",
     ):
         self.voiceModel = voiceModel
@@ -100,6 +184,7 @@ class AgentTemplates:
             self.voiceName = self.get_voice_name_from_model(self.voiceModel)
         else:
             self.voiceName = voiceName
+        self.language = language
 
         self.personality = ""
         self.company = ""
@@ -148,9 +233,25 @@ class AgentTemplates:
                 current_date=datetime.now().strftime("%A, %B %d, %Y")
             )
 
-        self.first_message = f"Hello! I'm {self.voiceName} from {self.company} customer service. {self.capabilities} How can I help you today?"
+        # Use base language code (e.g. en from en-US) for welcome message and capabilities lookup
+        lang_base = (self.language or "en").split("-")[0].lower()
+        cap_template = CAPABILITY_TEMPLATES.get(lang_base) or CAPABILITY_TEMPLATES["en"]
+        topic = (
+            (CAPABILITY_TOPICS.get(self.industry) or {}).get(lang_base)
+            or (CAPABILITY_TOPICS.get(self.industry) or {}).get("en")
+            or self.industry
+        )
+        self.capabilities = cap_template.format(topic=topic)
+
+        welcome_template = WELCOME_MESSAGES.get(lang_base, WELCOME_MESSAGES["en"])
+        self.first_message = welcome_template.format(
+            voiceName=self.voiceName,
+            company=self.company,
+            capabilities=self.capabilities,
+        )
 
         self.settings["agent"]["speak"]["provider"]["model"] = self.voiceModel
+        self.settings["agent"]["language"] = self.language
         self.settings["agent"]["think"]["prompt"] = self.prompt
         self.settings["agent"]["greeting"] = self.first_message
 
@@ -159,31 +260,26 @@ class AgentTemplates:
     def deepgram(self, company="Deepgram"):
         self.company = company
         self.personality = f"You are {self.voiceName}, a friendly and professional customer service representative for {self.company}, a Voice API company who provides STT and TTS capabilities via API. Your role is to assist potential customers with general inquiries about Deepgram."
-        self.capabilities = "I can help you answer questions about Deepgram."
+
     def healthcare(self, company="HealthFirst"):
         self.company = company
         self.personality = f"You are {self.voiceName}, a compassionate and knowledgeable healthcare assistant for {self.company}, a leading healthcare provider. Your role is to assist patients with general information about their appointments and orders."
-        self.capabilities = "I can help you answer questions about healthcare."
 
     def banking(self, company="SecureBank"):
         self.company = company
         self.personality = f"You are {self.voiceName}, a professional and trustworthy banking representative for {self.company}, a secure financial institution. Your role is to assist customers with general information about their accounts and transactions."
-        self.capabilities = "I can help you answer questions about banking."
 
     def pharmaceuticals(self, company="MedLine"):
         self.company = company
         self.personality = f"You are {self.voiceName}, a professional and trustworthy pharmaceutical representative for {self.company}, a secure pharmaceutical company. Your role is to assist customers with general information about their prescriptions and orders."
-        self.capabilities = "I can help you answer questions about pharmaceuticals."
 
     def retail(self, company="StyleMart"):
         self.company = company
         self.personality = f"You are {self.voiceName}, a friendly and attentive retail associate for {self.company}, a trendy clothing and accessories store. Your role is to assist customers with general information about their orders and transactions."
-        self.capabilities = "I can help you answer questions about retail."
 
     def travel(self, company="TravelTech"):
         self.company = company
         self.personality = f"You are {self.voiceName}, a friendly and professional customer service representative for {self.company}, a tech-forward travel agency. Your role is to assist customers with general information about their travel plans and orders."
-        self.capabilities = "I can help you answer questions about travel."
 
     @staticmethod
     def get_available_industries():

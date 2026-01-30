@@ -271,9 +271,14 @@ body:not(.dark-mode) .column h2 {
     flex-grow: 1;
 }
 
-.timeline-item, .timeline-spacer {
+.timeline-item {
     margin: 4px 0;
     min-height: 20px;
+}
+
+.timeline-spacer {
+    margin: 4px 0;
+    min-height: 0;
 }
 
 .timeline-item.message {

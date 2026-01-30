@@ -26,6 +26,10 @@
             <div id="status" class="status">Microphone: Not active</div>
             <div class="audio-controls">
                 <div class="device-select">
+                    <label for="languageSelect">Language:</label>
+                    <select id="languageSelect"></select>
+                </div>
+                <div class="device-select">
                     <label for="voiceModel">Voice Model:</label>
                     <select id="voiceModel"></select>
                 </div>
@@ -103,6 +107,7 @@
         const socket = io();
         const startButton = document.getElementById('startButton');
         const industryButton = document.getElementById('industryButton');
+        const languageSelect = document.getElementById('languageSelect');
         const voiceModelSelect = document.getElementById('voiceModel');
         const industryPopup = document.getElementById('industryPopup');
         const industryList = document.getElementById('industryList');
@@ -123,8 +128,10 @@
         const messageOrder = []; // Keep track of message order
         let currentIndustry = 'deepgram'; // Default industry
         let currentIndustryName = 'Deepgram'; // Default industry name
+        let currentLanguage = 'en'; // Synced with selected voice model for agent config
         let currentVoiceModel = 'aura-2-thalia-en'; // Default voice model
         let currentVoiceName = ''; // Will be populated from the model name
+        let allTTSModels = []; // Full list from API; voice model list filtered by language
         let lastLogElement = null; // Track the last real log entry element
 
         // Populate audio devices
@@ -178,10 +185,52 @@ async function loadAudioDevices() {
         navigator.mediaDevices.addEventListener('devicechange', loadAudioDevices);
         loadAudioDevices();
         
-        // Load TTS models
+        // Load TTS models (and derive languages for dropdown)
         loadTTSModels();
         
-        // Function to load TTS models from the API
+        // Populate voice model dropdown with models for the given language
+        function populateVoiceModelsForLanguage(lang) {
+            voiceModelSelect.innerHTML = '';
+            const modelsForLang = (allTTSModels || []).filter(m => (m.language || 'en') === lang);
+            modelsForLang.forEach(model => {
+                if (!model.name) return;
+                const option = document.createElement('option');
+                option.value = model.name;
+                let displayName = model.display_name || model.name;
+                displayName = displayName.charAt(0).toUpperCase() + displayName.slice(1);
+                let description = model.accent ? model.accent + ' accent' : '';
+                let optionText = displayName;
+                if (model.language) optionText += ' (' + model.language + ')';
+                if (description) optionText += ' - ' + description;
+                option.text = optionText;
+                option.dataset.voiceName = displayName;
+                option.dataset.language = model.language || 'en';
+                if (model.tags) option.title = model.tags;
+                voiceModelSelect.appendChild(option);
+            });
+            if (voiceModelSelect.options.length > 0) {
+                let found = false;
+                if (currentVoiceModel) {
+                    for (let i = 0; i < voiceModelSelect.options.length; i++) {
+                        if (voiceModelSelect.options[i].value === currentVoiceModel) {
+                            voiceModelSelect.selectedIndex = i;
+                            currentVoiceName = voiceModelSelect.options[i].dataset.voiceName;
+                            currentLanguage = voiceModelSelect.options[i].dataset.language || 'en';
+                            found = true;
+                            break;
+                        }
+                    }
+                }
+                if (!found) {
+                    voiceModelSelect.selectedIndex = 0;
+                    currentVoiceModel = voiceModelSelect.options[0].value;
+                    currentVoiceName = voiceModelSelect.options[0].dataset.voiceName;
+                    currentLanguage = voiceModelSelect.options[0].dataset.language || 'en';
+                }
+            }
+        }
+        
+        // Function to load TTS models from the API and build language dropdown
         function loadTTSModels() {
             fetch('/tts-models')
                 .then(response => response.json())
@@ -190,81 +239,45 @@ async function loadAudioDevices() {
                         console.error('Error loading TTS models:', data.error);
                         return;
                     }
-                    
-                    // Clear existing options
-                    voiceModelSelect.innerHTML = '';
-                    
-                    // Add options for each model
-                    data.models.forEach(model => {
-                        if (!model.name) return; // Skip if no name
-                        
-                        const option = document.createElement('option');
-                        option.value = model.name; // Use canonical_name as the value
-                        
-                        // Get a display name for the voice
-                        let displayName = model.display_name || model.name;
-                        displayName = displayName.charAt(0).toUpperCase() + displayName.slice(1);
-                        
-                        // Create descriptive text
-                        let description = '';
-                        if (model.accent) {
-                            description += model.accent + ' accent';
-                        }
-                        
-                        // Set the display text
-                        let optionText = displayName;
-                        if (model.language) {
-                            optionText += ' (' + model.language + ')';
-                        }
-                        if (description) {
-                            optionText += ' - ' + description;
-                        }
-                        option.text = optionText;
-                        
-                        // Store the voice name for later use
-                        option.dataset.voiceName = displayName;
-                        
-                        // Add tooltip with tags if available
-                        if (model.tags) {
-                            option.title = model.tags;
-                        }
-                        
-                        voiceModelSelect.appendChild(option);
+                    allTTSModels = (data.models || []).filter(m => m.name);
+                    const langSet = new Set();
+                    allTTSModels.forEach(m => { langSet.add(m.language || 'en'); });
+                    const languages = Array.from(langSet).sort();
+                    languageSelect.innerHTML = '';
+                    languages.forEach(lang => {
+                        const opt = document.createElement('option');
+                        opt.value = lang;
+                        opt.textContent = lang;
+                        languageSelect.appendChild(opt);
                     });
-                    
-                    // Set default selection if available
-                    if (voiceModelSelect.options.length > 0) {
-                        // If we have a current model, try to select it
-                        let found = false;
-                        if (currentVoiceModel) {
-                            for (let i = 0; i < voiceModelSelect.options.length; i++) {
-                                if (voiceModelSelect.options[i].value === currentVoiceModel) {
-                                    voiceModelSelect.selectedIndex = i;
-                                    currentVoiceName = voiceModelSelect.options[i].dataset.voiceName;
-                                    found = true;
-                                    break;
-                                }
-                            }
-                        }
-                        
-                        // If not found or no current model, select the first one
-                        if (!found) {
-                            voiceModelSelect.selectedIndex = 0;
-                            currentVoiceModel = voiceModelSelect.options[0].value;
-                            currentVoiceName = voiceModelSelect.options[0].dataset.voiceName;
-                        }
+                    if (languages.length > 0 && !languages.includes(currentLanguage)) {
+                        currentLanguage = languages[0];
                     }
+                    if (languages.length > 0) {
+                        const idx = languages.indexOf(currentLanguage);
+                        languageSelect.selectedIndex = idx >= 0 ? idx : 0;
+                        currentLanguage = languageSelect.value;
+                    }
+                    populateVoiceModelsForLanguage(currentLanguage);
                 })
                 .catch(error => {
                     console.error('Error fetching TTS models:', error);
                 });
         }
         
-        // Voice model selection handler
+        // Language selection: filter voice models to selected language
+        languageSelect.addEventListener('change', function() {
+            currentLanguage = this.value;
+            populateVoiceModelsForLanguage(currentLanguage);
+        });
+        
+        // Voice model selection: keep agent language in sync with model's language
         voiceModelSelect.addEventListener('change', function() {
             currentVoiceModel = this.value;
             const selectedOption = this.options[this.selectedIndex];
             currentVoiceName = selectedOption.dataset.voiceName;
+            currentLanguage = selectedOption.dataset.language || 'en';
+            languageSelect.value = currentLanguage;
         });
         
         // Initialize industry display
@@ -372,12 +385,13 @@ async function loadAudioDevices() {
                     console.log('Audio capture started successfully, starting voice agent...');
                     statusDiv.textContent = 'Starting voice agent...';
                     
-                    // Now start the voice agent on the server
+                    // Now start the voice agent on the server (language synced with selected voice model)
                     socket.emit('start_voice_agent', {
                         inputDeviceId: inputSelect.value,
                         industry: currentIndustry,
                         voiceModel: currentVoiceModel,
                         voiceName: currentVoiceName,
+                        language: currentLanguage,
                         browserAudio: true // Flag to indicate browser is handling audio
                     });
                     

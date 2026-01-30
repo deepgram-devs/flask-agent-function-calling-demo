@@ -43,6 +43,7 @@ class VoiceAgent:
         industry="deepgram",
         voiceModel="aura-2-thalia-en",
         voiceName="",
+        language="en",
         browser_audio=False,
     ):
         self.mic_audio_queue = asyncio.Queue()
@@ -56,7 +57,9 @@ class VoiceAgent:
         self.output_device_id = None
         self.browser_audio = browser_audio  # For browser microphone input
         self.browser_output = browser_audio  # Use same setting for browser output
-        self.agent_templates = AgentTemplates(industry, voiceModel, voiceName)
+        self.agent_templates = AgentTemplates(
+            industry, voiceModel, voiceName, language=language
+        )
 
     def set_loop(self, loop):
         self.loop = loop
@@ -408,7 +411,7 @@ class Speaker:
             )
         else:
             self._stream = None
-            
+
         self._queue = janus.Queue()
         self._stop = threading.Event()
         self._thread = threading.Thread(
@@ -439,7 +442,11 @@ class Speaker:
                 except janus.QueueEmpty:
                     break
         # Drain any items already in the sync queue to prevent further playback
-        if self._queue and hasattr(self._queue, "sync_q") and self._queue.sync_q is not None:
+        if (
+            self._queue
+            and hasattr(self._queue, "sync_q")
+            and self._queue.sync_q is not None
+        ):
             try:
                 while True:
                     self._queue.sync_q.get_nowait()
@@ -692,6 +699,8 @@ def handle_start_voice_agent(data=None):
         )
         # Get voice name from data or default to empty string, which uses the Model's voice name in the backend
         voiceName = data.get("voiceName", "") if data else ""
+        # Get language from data or default to en (used in agent config)
+        language = data.get("language", "en") if data else "en"
         # Check if browser is handling audio capture
         browser_audio = data.get("browserAudio", False) if data else False
 
@@ -699,6 +708,7 @@ def handle_start_voice_agent(data=None):
             industry=industry,
             voiceModel=voiceModel,
             voiceName=voiceName,
+            language=language,
             browser_audio=browser_audio,
         )
         if data:
@@ -730,7 +740,9 @@ def handle_audio_data(data):
         try:
             # Get the audio buffer and sample rate
             audio_buffer = data.get("audio")
-            sample_rate = data.get("sampleRate", 44100)  # Default to 44.1kHz if not specified
+            sample_rate = data.get(
+                "sampleRate", 44100
+            )  # Default to 44.1kHz if not specified
 
             if audio_buffer:
                 try:
@@ -771,17 +783,27 @@ def handle_audio_data(data):
 
                     # Resample to 16k if needed (server-side fallback)
                     original_len = len(audio_bytes)
-                    original_rate = int(sample_rate) if isinstance(sample_rate, (int, float)) else 44100
+                    original_rate = (
+                        int(sample_rate)
+                        if isinstance(sample_rate, (int, float))
+                        else 44100
+                    )
                     resampled = False
                     if original_rate != 16000:
                         try:
-                            prev_state = getattr(handle_audio_data, "_ratecv_state", None)
-                            audio_bytes, state = audioop.ratecv(audio_bytes, 2, 1, original_rate, 16000, prev_state)
+                            prev_state = getattr(
+                                handle_audio_data, "_ratecv_state", None
+                            )
+                            audio_bytes, state = audioop.ratecv(
+                                audio_bytes, 2, 1, original_rate, 16000, prev_state
+                            )
                             handle_audio_data._ratecv_state = state
                             sample_rate = 16000
                             resampled = True
                         except Exception as e:
-                            logger.warning(f"Server resample failed (rate {original_rate}->16000): {e}. Passing through original bytes.")
+                            logger.warning(
+                                f"Server resample failed (rate {original_rate}->16000): {e}. Passing through original bytes."
+                            )
 
                     # Log the first time we receive audio data
                     if not hasattr(handle_audio_data, "first_log_done"):

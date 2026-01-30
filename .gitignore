@@ -48,3 +48,4 @@ poetry.lock
 
 # Deepgram docs
 deepgram-docs/
+.claude/settings.local.json

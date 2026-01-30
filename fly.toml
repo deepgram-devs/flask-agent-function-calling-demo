@@ -7,6 +7,7 @@ app = 'deepgram-agent-demo'
 primary_region = 'sjc'
 
 [build]
+  dockerfile = "Dockerfile"
 
 [http_service]
   internal_port = 5000

@@ -1,4 +1,4 @@
-from flask import Flask, render_template, jsonify
+from flask import Flask, render_template, jsonify, request
 from flask_socketio import SocketIO
 import pyaudio
 import asyncio
@@ -585,8 +585,33 @@ def audio_devices():
 
 @app.route("/industries")
 def get_industries():
-    # Get available industries from AgentTemplates
+    # Return available industries — merges JSON configs with legacy fallback
     return AgentTemplates.get_available_industries()
+
+
+@app.route("/configs", methods=["GET"])
+def get_configs():
+    """Return all demo configs as JSON array."""
+    return jsonify(AgentTemplates.load_all())
+
+
+@app.route("/configs", methods=["POST"])
+def create_config():
+    """Create a new demo config. Body must include 'id' field."""
+    data = request.get_json()
+    if not data or "id" not in data:
+        return jsonify({"error": "id field required"}), 400
+    config = AgentTemplates.save(data)
+    return jsonify(config), 201
+
+
+@app.route("/configs/<config_id>", methods=["DELETE"])
+def delete_config(config_id):
+    """Delete a demo config by id."""
+    deleted = AgentTemplates.delete(config_id)
+    if deleted:
+        return jsonify({"deleted": config_id}), 200
+    return jsonify({"error": "not found"}), 404
 
 
 @app.route("/tts-models")

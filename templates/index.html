@@ -1,1031 +1,804 @@
 <!DOCTYPE html>
-<html>
-    <head>
-        <meta charset="utf-8">
-        <title>Voice Agent Debugger</title>
-        <script src="https://cdnjs.cloudflare.com/ajax/libs/socket.io/4.0.1/socket.io.js"></script>
-        <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
-    </head>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Deepgram Voice Agent Demo</title>
+
+  <!-- Deepgram Design System -->
+  <link rel="stylesheet" href="https://unpkg.com/@deepgram/styles/dist/deepgram.css">
+  <!-- Font Awesome -->
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.2/css/all.min.css">
+  <!-- Local overrides -->
+  <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
+
+  <style>
+    :root { color-scheme: dark; }
+  </style>
+</head>
 <body>
-    <!-- Industry Selection Popup -->
-    <div id="industryPopup" class="popup-overlay">
-        <div class="popup-content">
-            <h3>Select Agent Industry</h3>
-            <div id="industryList" class="industry-list"></div>
-            <div class="popup-buttons">
-                <button id="cancelIndustry" class="popup-button">Cancel</button>
-            </div>
+
+  <!-- SocketIO client -->
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/socket.io/4.0.1/socket.io.js"></script>
+
+  <div class="dg-columns" style="height: 100vh; overflow: hidden;">
+
+    <!-- LEFT PANEL: Demo selector + controls -->
+    <aside class="dg-columns__aside" style="overflow-y: auto; border-right: 1px solid var(--dg-color-border);">
+      <div style="padding: 1rem;">
+        <div class="dg-page-heading">
+          <h1 class="dg-page-heading__title">Voice Agent Demo</h1>
+          <p class="dg-page-heading__subtitle">Select a demo to begin</p>
         </div>
-    </div>
-    
-    <div class="main-container">
-        <div class="sidebar">
-            <button id="startButton" class="mic-button">Start Voice Agent</button>
-            <div id="currentIndustryDisplay" class="current-industry">Industry: <span>Tech Support</span></div>
-            <button id="industryButton" class="industry-button">Change Industry</button>
-            <div id="status" class="status">Microphone: Not active</div>
-            <div class="audio-controls">
-                <div class="device-select">
-                    <label for="languageSelect">Language:</label>
-                    <select id="languageSelect"></select>
-                </div>
-                <div class="device-select">
-                    <label for="voiceModel">Voice Model:</label>
-                    <select id="voiceModel"></select>
-                </div>
-                <div class="device-select">
-                    <label for="inputDevice">Input Device:</label>
-                    <select id="inputDevice"></select>
-                </div>
-            </div>
-            <div class="controls">
-                <label class="toggle">
-                    <input type="checkbox" id="showLogs">
-                    <span class="toggle-label">Show Logs</span>
-                </label>
-                <label class="toggle">
-                    <input type="checkbox" id="darkMode" checked>
-                    <span class="toggle-label">Dark Mode</span>
-                </label>
-            </div>
-            <div class="sample-data">
-                <h3>Sample Customer Data</h3>
-                <div class="sample-data-content">
-                    {% for customer in sample_data %}
-                    <div class="customer-card collapsed">
-                        <div class="customer-header">
-                            <div class="customer-info">
-                                <div><strong>{{ customer.Customer }}</strong></div>
-                                <div>ID: {{ customer.ID }}</div>
-                            </div>
-                            <div class="expand-icon">▼</div>
-                        </div>
-                        <div class="customer-details">
-                            <div class="customer-contact">
-                                <div>Phone: {{ customer.Phone }}</div>
-                                <div>Email: {{ customer.Email }}</div>
-                            </div>
-                            {% if customer.Appointments %}
-                            <div class="customer-appointments">
-                                <strong>Appointments:</strong>
-                                {% for apt in customer.Appointments %}
-                                <div>{{ apt.Service }} - {{ apt.Date }} ({{ apt.Status }})</div>
-                                {% endfor %}
-                            </div>
-                            {% endif %}
-                            {% if customer.Orders %}
-                            <div class="customer-orders">
-                                <strong>Orders:</strong>
-                                {% for order in customer.Orders %}
-                                <div>{{ order.ID }}</div>
-                                <div>- Items: {{ order['# Items'] }}</div>
-                                <div>- Total: {{ order.Total }}</div>
-                                <div>- Status: {{ order.Status }}</div>
-                                <div>- Date: {{ order.Date }}</div>
-                                {% endfor %}
-                            </div>
-                            {% endif %}
-                        </div>
-                    </div>
-                    {% endfor %}
-                </div>
-            </div>
+
+        <!-- Demo selector grid -->
+        <div id="demo-selector" style="display: grid; grid-template-columns: 1fr; gap: 0.75rem; margin-top: 1rem;">
+          <!-- Cards injected by JS from GET /configs -->
+          <div class="dg-spinner" id="configs-loading"></div>
         </div>
-        <div class="columns-container">
-            <div id="conversation" class="timeline column">
-                <h2>Conversation</h2>
-                <div id="conversationMessages"></div>
-            </div>
-            <div id="logs" class="timeline column">
-                <h2>Logs</h2>
-                <div id="logMessages"></div>
-            </div>
+
+        <!-- New Demo button -->
+        <button class="dg-btn dg-btn--secondary" style="width: 100%; margin-top: 1rem;" id="new-demo-btn">
+          <i class="fa fa-plus"></i> New Demo
+        </button>
+
+        <hr style="border-color: var(--dg-color-border); margin: 1.5rem 0;">
+
+        <!-- Voice / Language selects -->
+        <div class="dg-form-field">
+          <label class="dg-form-field__label">Language</label>
+          <select class="dg-select" id="language-select">
+            <option value="en-US">English (US)</option>
+            <option value="en-PH">English (Philippines)</option>
+            <option value="tl">Tagalog</option>
+            <option value="ar">Arabic</option>
+          </select>
         </div>
+
+        <div class="dg-form-field" style="margin-top: 0.75rem;">
+          <label class="dg-form-field__label">Voice Model</label>
+          <select class="dg-select" id="voice-model-select">
+            <!-- Populated from /tts-models -->
+          </select>
+        </div>
+
+        <div class="dg-form-field" style="margin-top: 0.75rem;">
+          <label class="dg-form-field__label">Input Device</label>
+          <select class="dg-select" id="inputDevice">
+            <option value="default">Default Device</option>
+          </select>
+        </div>
+
+        <hr style="border-color: var(--dg-color-border); margin: 1.5rem 0;">
+
+        <!-- Start/Stop button -->
+        <div style="text-align: center;">
+          <div class="dg-status" id="status-indicator" data-status="idle">Ready</div>
+          <button class="dg-btn dg-btn--primary" id="start-btn" style="margin-top: 1rem; width: 100%; font-size: 1.1rem; padding: 0.875rem;">
+            <i class="fa fa-microphone"></i> Start Session
+          </button>
+        </div>
+      </div>
+    </aside>
+
+    <!-- CENTER PANEL: Conversation transcript -->
+    <main class="dg-columns__main" style="overflow: hidden; display: flex; flex-direction: column;">
+      <div style="padding: 1rem 1rem 0; border-bottom: 1px solid var(--dg-color-border);">
+        <h2 style="margin: 0; font-size: 1rem; font-weight: 600;" id="active-demo-name">No demo selected</h2>
+      </div>
+      <div class="conversation-log" id="conversation-log" style="flex: 1;">
+        <div class="dg-alert dg-alert--info" id="welcome-message">
+          Select a demo from the left panel and press Start Session.
+        </div>
+      </div>
+    </main>
+
+    <!-- RIGHT PANEL: Event log / debug -->
+    <aside class="dg-columns__aside dg-columns__aside--right" style="overflow: hidden; border-left: 1px solid var(--dg-color-border); display: flex; flex-direction: column;">
+      <div style="padding: 0.75rem 1rem; border-bottom: 1px solid var(--dg-color-border); font-weight: 600; font-size: 0.85rem;">
+        Event Log
+      </div>
+      <div class="event-log" id="event-log"></div>
+    </aside>
+
+  </div>
+
+  <!-- Builder slide-in panel -->
+  <div class="builder-overlay" id="builder-overlay"></div>
+  <div class="builder-panel" id="builder-panel">
+    <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 1.5rem;">
+      <h2 style="margin: 0; font-size: 1.1rem; font-weight: 700;" id="builder-title">New Demo</h2>
+      <button class="dg-btn dg-btn--ghost dg-btn--sm" id="builder-close">
+        <i class="fa fa-times"></i>
+      </button>
     </div>
 
-    <script>
-        const socket = io();
-        const startButton = document.getElementById('startButton');
-        const industryButton = document.getElementById('industryButton');
-        const languageSelect = document.getElementById('languageSelect');
-        const voiceModelSelect = document.getElementById('voiceModel');
-        const industryPopup = document.getElementById('industryPopup');
-        const industryList = document.getElementById('industryList');
-        const cancelIndustry = document.getElementById('cancelIndustry');
-        const currentIndustryDisplay = document.getElementById('currentIndustryDisplay').querySelector('span');
-        const conversationMessages = document.getElementById('conversationMessages');
-        const logMessages = document.getElementById('logMessages');
-        const statusDiv = document.getElementById('status');
-        const showLogsToggle = document.getElementById('showLogs');
-        const logsColumn = document.getElementById('logs');
-        const inputSelect = document.getElementById('inputDevice');
-        // Scroll is managed programmatically to keep both columns pinned to bottom after updates
-        let isActive = false;
-        let currentGroup = null;
-        let lastMessageTimestamp = null;
-        let messageCounter = 0;
-        const messageHeights = new Map(); // Store heights by counter
-        const messageOrder = []; // Keep track of message order
-        let currentIndustry = 'deepgram'; // Default industry
-        let currentIndustryName = 'Deepgram'; // Default industry name
-        let currentLanguage = 'en'; // Synced with selected voice model for agent config
-        let currentVoiceModel = 'aura-2-thalia-en'; // Default voice model
-        let currentVoiceName = ''; // Will be populated from the model name
-        let allTTSModels = []; // Full list from API; voice model list filtered by language
-        let lastLogElement = null; // Track the last real log entry element
+    <form id="builder-form">
+      <input type="hidden" id="builder-id" name="id">
 
-        // Populate audio devices
-async function loadAudioDevices() {
-    try {
-        // Clear existing options
+      <div class="dg-form-field">
+        <label class="dg-form-field__label">Demo Name *</label>
+        <input class="dg-input" type="text" id="builder-name" name="name" required placeholder="e.g. Acme Support Bot">
+      </div>
+
+      <div class="dg-form-field">
+        <label class="dg-form-field__label">Company</label>
+        <input class="dg-input" type="text" id="builder-company" name="company" placeholder="e.g. Acme Corp">
+      </div>
+
+      <div class="dg-form-field">
+        <label class="dg-form-field__label">Personality</label>
+        <textarea class="dg-textarea" id="builder-personality" name="personality" rows="2" placeholder="Brief personality description"></textarea>
+      </div>
+
+      <div class="dg-form-field">
+        <label class="dg-form-field__label">System Prompt *</label>
+        <textarea class="dg-textarea" id="builder-system-prompt" name="systemPrompt" rows="6" required placeholder="You are a helpful agent for..."></textarea>
+      </div>
+
+      <div class="dg-form-field">
+        <label class="dg-form-field__label">Greeting</label>
+        <input class="dg-input" type="text" id="builder-greeting" name="greeting" placeholder="Hello, how can I help you today?">
+      </div>
+
+      <div class="dg-form-field">
+        <label class="dg-form-field__label">Language</label>
+        <select class="dg-select" id="builder-language" name="language">
+          <option value="en-US">English (US)</option>
+          <option value="en-PH">English (Philippines)</option>
+          <option value="tl">Tagalog</option>
+          <option value="ar">Arabic</option>
+        </select>
+      </div>
+
+      <div class="dg-form-field">
+        <label class="dg-form-field__label">Voice Model</label>
+        <select class="dg-select" id="builder-voice-model" name="voiceModel">
+          <!-- Populated from /tts-models -->
+        </select>
+      </div>
+
+      <div class="dg-form-field">
+        <label class="dg-form-field__label">Hotword (optional)</label>
+        <input class="dg-input" type="text" id="builder-hotword" name="hotword" placeholder="e.g. Hey Saga">
+      </div>
+
+      <div class="dg-form-field">
+        <label class="dg-form-field__label">Mode</label>
+        <select class="dg-select" id="builder-mode" name="mode">
+          <option value="voice_agent">Voice Agent</option>
+          <option value="agent_assist">Agent Assist</option>
+        </select>
+      </div>
+
+      <div class="dg-form-field">
+        <label class="dg-form-field__label" style="margin-bottom: 0.5rem;">Functions</label>
+        <div id="builder-functions" style="display: flex; flex-direction: column; gap: 0.5rem;">
+          <!-- Toggles injected by JS from FUNCTION_DEFINITIONS -->
+        </div>
+      </div>
+
+      <div style="margin-top: 1.5rem; display: flex; gap: 0.75rem;">
+        <button type="submit" class="dg-btn dg-btn--primary" style="flex: 1;">
+          <i class="fa fa-save"></i> Save Demo
+        </button>
+        <button type="button" class="dg-btn dg-btn--ghost" id="builder-cancel">Cancel</button>
+      </div>
+    </form>
+  </div>
+
+  <script>
+    // ── SocketIO setup ─────────────────────────────────────
+    const socket = io();
+
+    // ── DOM refs ──────────────────────────────────────────
+    const startBtn = document.getElementById('start-btn');
+    const inputSelect = document.getElementById('inputDevice');
+    const statusIndicator = document.getElementById('status-indicator');
+    const conversationLog = document.getElementById('conversation-log');
+    const eventLog = document.getElementById('event-log');
+
+    // ── State ─────────────────────────────────────────────
+    let isActive = false;
+    let selectedConfig = null;
+    let allTTSModels = [];
+    let currentLanguage = 'en';
+    let currentVoiceModel = 'aura-2-thalia-en';
+    let currentVoiceName = '';
+
+    // ── Status helper ─────────────────────────────────────
+    function setStatus(status, label) {
+      statusIndicator.dataset.status = status;
+      statusIndicator.textContent = label;
+    }
+
+    // ── Config loader ─────────────────────────────────────
+    async function loadConfigs() {
+      const res = await fetch('/configs');
+      const configs = await res.json();
+      renderConfigCards(configs);
+    }
+
+    function renderConfigCards(configs) {
+      const container = document.getElementById('demo-selector');
+      container.innerHTML = '';
+      if (configs.length === 0) {
+        container.innerHTML = '<p style="color: var(--dg-color-text-muted); font-size: 0.85rem;">No demos yet. Click New Demo to create one.</p>';
+        return;
+      }
+      configs.forEach(cfg => {
+        const card = document.createElement('div');
+        card.className = 'dg-card dg-card--selectable';
+        card.dataset.configId = cfg.id;
+        card.innerHTML = `
+          <div style="display: flex; justify-content: space-between; align-items: flex-start;">
+            <div>
+              <div style="font-weight: 600;">${cfg.name}</div>
+              <div style="font-size: 0.8rem; color: var(--dg-color-text-muted);">${cfg.company || ''} &middot; ${cfg.language || ''}</div>
+            </div>
+            <button class="dg-btn dg-btn--ghost dg-btn--xs edit-config-btn" data-config-id="${cfg.id}" title="Edit">
+              <i class="fa fa-edit"></i>
+            </button>
+          </div>
+        `;
+        card.addEventListener('click', (e) => {
+          if (e.target.closest('.edit-config-btn')) return;
+          selectConfig(cfg);
+        });
+        card.querySelector('.edit-config-btn').addEventListener('click', () => openBuilder(cfg));
+        container.appendChild(card);
+      });
+    }
+
+    function selectConfig(cfg) {
+      selectedConfig = cfg;
+      document.querySelectorAll('#demo-selector .dg-card--selectable').forEach(c => c.classList.remove('dg-card--selected'));
+      const card = document.querySelector(`[data-config-id="${cfg.id}"]`);
+      if (card) card.classList.add('dg-card--selected');
+      document.getElementById('active-demo-name').textContent = cfg.name;
+      // Sync language/voice selects
+      if (cfg.language) document.getElementById('language-select').value = cfg.language;
+      if (cfg.voiceModel) document.getElementById('voice-model-select').value = cfg.voiceModel;
+      // Update current values for session start
+      if (cfg.language) currentLanguage = cfg.language;
+      if (cfg.voiceModel) currentVoiceModel = cfg.voiceModel;
+    }
+
+    // ── Builder panel ─────────────────────────────────────
+    function openBuilder(existingConfig) {
+      const panel = document.getElementById('builder-panel');
+      const overlay = document.getElementById('builder-overlay');
+      const title = document.getElementById('builder-title');
+      const form = document.getElementById('builder-form');
+      form.reset();
+      if (existingConfig) {
+        title.textContent = 'Edit Demo';
+        document.getElementById('builder-id').value = existingConfig.id || '';
+        document.getElementById('builder-name').value = existingConfig.name || '';
+        document.getElementById('builder-company').value = existingConfig.company || '';
+        document.getElementById('builder-personality').value = existingConfig.personality || '';
+        document.getElementById('builder-system-prompt').value = existingConfig.systemPrompt || '';
+        document.getElementById('builder-greeting').value = existingConfig.greeting || '';
+        document.getElementById('builder-language').value = existingConfig.language || 'en-US';
+        document.getElementById('builder-voice-model').value = existingConfig.voiceModel || '';
+        document.getElementById('builder-hotword').value = existingConfig.hotword || '';
+        document.getElementById('builder-mode').value = existingConfig.mode || 'voice_agent';
+      } else {
+        title.textContent = 'New Demo';
+        document.getElementById('builder-id').value = '';
+      }
+      panel.classList.add('open');
+      overlay.classList.add('open');
+    }
+
+    function closeBuilder() {
+      document.getElementById('builder-panel').classList.remove('open');
+      document.getElementById('builder-overlay').classList.remove('open');
+    }
+
+    document.getElementById('new-demo-btn').addEventListener('click', () => openBuilder(null));
+    document.getElementById('builder-close').addEventListener('click', closeBuilder);
+    document.getElementById('builder-cancel').addEventListener('click', closeBuilder);
+    document.getElementById('builder-overlay').addEventListener('click', closeBuilder);
+
+    document.getElementById('builder-form').addEventListener('submit', async (e) => {
+      e.preventDefault();
+      const form = e.target;
+      const data = Object.fromEntries(new FormData(form));
+      // Generate id from name if new
+      if (!data.id) {
+        data.id = data.name.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '');
+      }
+      const res = await fetch('/configs', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(data)
+      });
+      if (res.ok) {
+        closeBuilder();
+        await loadConfigs();
+      } else {
+        alert('Failed to save demo config.');
+      }
+    });
+
+    // ── TTS model loader ───────────────────────────────────
+    function populateVoiceSelect(selectEl, lang) {
+      const prev = selectEl.value;
+      selectEl.innerHTML = '';
+      const models = (allTTSModels || []).filter(m => (m.language || 'en') === lang || !lang);
+      (models.length ? models : allTTSModels).forEach(model => {
+        if (!model.name) return;
+        const option = document.createElement('option');
+        option.value = model.name;
+        let displayName = model.display_name || model.name;
+        displayName = displayName.charAt(0).toUpperCase() + displayName.slice(1);
+        let optionText = displayName;
+        if (model.language) optionText += ' (' + model.language + ')';
+        if (model.accent) optionText += ' - ' + model.accent + ' accent';
+        option.text = optionText;
+        option.dataset.voiceName = displayName;
+        option.dataset.language = model.language || 'en';
+        selectEl.appendChild(option);
+      });
+      // Try to restore previous selection
+      if (prev) selectEl.value = prev;
+    }
+
+    function loadTTSModels() {
+      fetch('/tts-models')
+        .then(r => r.json())
+        .then(data => {
+          if (data.error) { console.error('Error loading TTS models:', data.error); return; }
+          allTTSModels = (data.models || []).filter(m => m.name);
+
+          // Build language dropdown from model list
+          const langSet = new Set(allTTSModels.map(m => m.language || 'en'));
+          const langSelect = document.getElementById('language-select');
+          langSelect.innerHTML = '';
+          Array.from(langSet).sort().forEach(lang => {
+            const opt = document.createElement('option');
+            opt.value = lang;
+            opt.textContent = lang;
+            langSelect.appendChild(opt);
+          });
+
+          // Set default language and populate voice models
+          if (langSet.has(currentLanguage)) {
+            langSelect.value = currentLanguage;
+          } else if (langSelect.options.length) {
+            currentLanguage = langSelect.value;
+          }
+
+          populateVoiceSelect(document.getElementById('voice-model-select'), currentLanguage);
+          populateVoiceSelect(document.getElementById('builder-voice-model'), currentLanguage);
+
+          // Set default voice model selection
+          const voiceSel = document.getElementById('voice-model-select');
+          if (currentVoiceModel) voiceSel.value = currentVoiceModel;
+          if (voiceSel.value) {
+            currentVoiceModel = voiceSel.value;
+            const opt = voiceSel.options[voiceSel.selectedIndex];
+            if (opt) currentVoiceName = opt.dataset.voiceName || '';
+          }
+        })
+        .catch(err => console.error('Error fetching TTS models:', err));
+    }
+
+    document.getElementById('language-select').addEventListener('change', function() {
+      currentLanguage = this.value;
+      populateVoiceSelect(document.getElementById('voice-model-select'), currentLanguage);
+    });
+
+    document.getElementById('voice-model-select').addEventListener('change', function() {
+      currentVoiceModel = this.value;
+      const opt = this.options[this.selectedIndex];
+      if (opt) {
+        currentVoiceName = opt.dataset.voiceName || '';
+        currentLanguage = opt.dataset.language || currentLanguage;
+        document.getElementById('language-select').value = currentLanguage;
+      }
+    });
+
+    // ── Audio devices ──────────────────────────────────────
+    async function loadAudioDevices() {
+      try {
         inputSelect.innerHTML = '';
-        
-        // First add a "Default" option
         const defaultOption = document.createElement('option');
-        defaultOption.value = "default";
-        defaultOption.text = "Default Device";
+        defaultOption.value = 'default';
+        defaultOption.text = 'Default Device';
         defaultOption.selected = true;
         inputSelect.appendChild(defaultOption);
-        
-        // Get browser audio devices
+
         const devices = await navigator.mediaDevices.enumerateDevices();
-        
-        // Filter for audio input devices only
-        const audioInputDevices = devices.filter(device => device.kind === 'audioinput');
-        
-        // Add browser audio devices
+        const audioInputDevices = devices.filter(d => d.kind === 'audioinput');
         audioInputDevices.forEach((device, index) => {
-            // Skip default device which has empty label
-            if (device.label) {
-                const option = document.createElement('option');
-                option.value = device.deviceId;
-                option.text = device.label || `Microphone ${index + 1}`;
-                inputSelect.appendChild(option);
-            }
+          if (device.label) {
+            const option = document.createElement('option');
+            option.value = device.deviceId;
+            option.text = device.label || `Microphone ${index + 1}`;
+            inputSelect.appendChild(option);
+          }
         });
-        
-        console.log(`Found ${audioInputDevices.length} browser audio input devices`);
-        
-        // If no devices with labels were found (which happens when permission hasn't been granted yet)
         if (audioInputDevices.filter(d => d.label).length === 0) {
-            // Request permission to access audio devices for the browser
-            const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
-            stream.getTracks().forEach(track => track.stop());
-            
-            // Try again after getting permission
-            return loadAudioDevices();
+          const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+          stream.getTracks().forEach(t => t.stop());
+          return loadAudioDevices();
         }
-    } catch (err) {
+      } catch (err) {
         console.error('Error loading audio devices:', err);
-        statusDiv.textContent = 'Error: Could not access audio devices';
+        setStatus('error', 'Cannot access audio devices');
+      }
     }
-}
+    navigator.mediaDevices.addEventListener('devicechange', loadAudioDevices);
 
-        // Load devices initially and when devices change
-        navigator.mediaDevices.addEventListener('devicechange', loadAudioDevices);
-        loadAudioDevices();
-        
-        // Load TTS models (and derive languages for dropdown)
-        loadTTSModels();
-        
-        // Populate voice model dropdown with models for the given language
-        function populateVoiceModelsForLanguage(lang) {
-            voiceModelSelect.innerHTML = '';
-            const modelsForLang = (allTTSModels || []).filter(m => (m.language || 'en') === lang);
-            modelsForLang.forEach(model => {
-                if (!model.name) return;
-                const option = document.createElement('option');
-                option.value = model.name;
-                let displayName = model.display_name || model.name;
-                displayName = displayName.charAt(0).toUpperCase() + displayName.slice(1);
-                let description = model.accent ? model.accent + ' accent' : '';
-                let optionText = displayName;
-                if (model.language) optionText += ' (' + model.language + ')';
-                if (description) optionText += ' - ' + description;
-                option.text = optionText;
-                option.dataset.voiceName = displayName;
-                option.dataset.language = model.language || 'en';
-                if (model.tags) option.title = model.tags;
-                voiceModelSelect.appendChild(option);
-            });
-            if (voiceModelSelect.options.length > 0) {
-                let found = false;
-                if (currentVoiceModel) {
-                    for (let i = 0; i < voiceModelSelect.options.length; i++) {
-                        if (voiceModelSelect.options[i].value === currentVoiceModel) {
-                            voiceModelSelect.selectedIndex = i;
-                            currentVoiceName = voiceModelSelect.options[i].dataset.voiceName;
-                            currentLanguage = voiceModelSelect.options[i].dataset.language || 'en';
-                            found = true;
-                            break;
-                        }
-                    }
-                }
-                if (!found) {
-                    voiceModelSelect.selectedIndex = 0;
-                    currentVoiceModel = voiceModelSelect.options[0].value;
-                    currentVoiceName = voiceModelSelect.options[0].dataset.voiceName;
-                    currentLanguage = voiceModelSelect.options[0].dataset.language || 'en';
-                }
-            }
-        }
-        
-        // Function to load TTS models from the API and build language dropdown
-        function loadTTSModels() {
-            fetch('/tts-models')
-                .then(response => response.json())
-                .then(data => {
-                    if (data.error) {
-                        console.error('Error loading TTS models:', data.error);
-                        return;
-                    }
-                    allTTSModels = (data.models || []).filter(m => m.name);
-                    const langSet = new Set();
-                    allTTSModels.forEach(m => { langSet.add(m.language || 'en'); });
-                    const languages = Array.from(langSet).sort();
-                    languageSelect.innerHTML = '';
-                    languages.forEach(lang => {
-                        const opt = document.createElement('option');
-                        opt.value = lang;
-                        opt.textContent = lang;
-                        languageSelect.appendChild(opt);
-                    });
-                    if (languages.length > 0 && !languages.includes(currentLanguage)) {
-                        currentLanguage = languages[0];
-                    }
-                    if (languages.length > 0) {
-                        const idx = languages.indexOf(currentLanguage);
-                        languageSelect.selectedIndex = idx >= 0 ? idx : 0;
-                        currentLanguage = languageSelect.value;
-                    }
-                    populateVoiceModelsForLanguage(currentLanguage);
-                })
-                .catch(error => {
-                    console.error('Error fetching TTS models:', error);
-                });
-        }
-        
-        // Language selection: filter voice models to selected language
-        languageSelect.addEventListener('change', function() {
-            currentLanguage = this.value;
-            populateVoiceModelsForLanguage(currentLanguage);
-        });
-        
-        // Voice model selection: keep agent language in sync with model's language
-        voiceModelSelect.addEventListener('change', function() {
-            currentVoiceModel = this.value;
-            const selectedOption = this.options[this.selectedIndex];
-            currentVoiceName = selectedOption.dataset.voiceName;
-            currentLanguage = selectedOption.dataset.language || 'en';
-            languageSelect.value = currentLanguage;
-        });
-        
-        // Initialize industry display
-        function initializeIndustryDisplay() {
-            fetch('/industries')
-                .then(response => response.json())
-                .then(industries => {
-                    // Find the display name for the current industry
-                    if (industries[currentIndustry]) {
-                        currentIndustryName = industries[currentIndustry];
-                        currentIndustryDisplay.textContent = currentIndustryName;
-                    }
-                })
-                .catch(error => console.error('Error initializing industry display:', error));
-        }
-        
-        // Initialize industry display on page load
-        initializeIndustryDisplay();
-        
-        // Load available industries
-        function loadIndustries() {
-            fetch('/industries')
-                .then(response => response.json())
-                .then(industries => {
-                    industryList.innerHTML = '';
-                    Object.entries(industries).forEach(([key, name]) => {
-                        const item = document.createElement('div');
-                        item.className = 'industry-item';
-                        if (key === currentIndustry) {
-                            item.classList.add('selected');
-                        }
-                        item.dataset.industry = key;
-                        item.textContent = name;
-                        item.addEventListener('click', () => selectIndustry(key, name));
-                        industryList.appendChild(item);
-                    });
-                })
-                .catch(error => console.error('Error loading industries:', error));
-        }
-        
-        // Select industry and close popup
-        function selectIndustry(industry, name) {
-            currentIndustry = industry;
-            currentIndustryName = name;
-            currentIndustryDisplay.textContent = name;
-            closeIndustryPopup();
-            
-            // If agent is active, stop it and restart with new industry
-            if (isActive) {
-                socket.emit('stop_voice_agent');
-                startButton.textContent = 'Start Voice Agent';
-                statusDiv.textContent = 'Microphone: Not active';
-                isActive = false;
-                
-                // Add message about industry change
-                addConversationMessage({
-                    role: 'system',
-                    content: `Industry changed to ${name}. Click Start Voice Agent to continue.`
-                });
-            }
-        }
-        
-        // Show industry popup
-        function showIndustryPopup() {
-            loadIndustries();
-            industryPopup.style.display = 'flex';
-        }
-        
-        // Close industry popup
-        function closeIndustryPopup() {
-            industryPopup.style.display = 'none';
-        }
-        
-        // Industry button click handler
-        industryButton.addEventListener('click', showIndustryPopup);
-        
-        // Cancel button click handler
-        cancelIndustry.addEventListener('click', closeIndustryPopup);
+    // ── Audio processing variables ─────────────────────────
+    let audioContext;
+    let mediaStream;
+    let processor;
+    let microphone;
 
-        // Send selected devices to server when starting
-        startButton.addEventListener('click', async () => {
-            if (!isActive) {
-                try {
-                    // Update status to show we're initializing
-                    statusDiv.textContent = 'Initializing audio capture...';
-                    
-                    // First check for microphone permission
-                    const hasPermission = await requestMicrophonePermission();
-                    if (!hasPermission) {
-                        statusDiv.textContent = 'Microphone permission denied';
-                        alert('Microphone permission is required for the voice agent to work.');
-                        return;
-                    }
-                    
-                    // Start capturing audio from the browser FIRST
-                    // This ensures we have audio working before starting the voice agent
-                    console.log('Starting audio capture...');
-                    const captureStarted = await startAudioCapture();
-                    if (!captureStarted) {
-                        statusDiv.textContent = 'Failed to start audio capture';
-                        alert('Failed to start audio capture. Please check your microphone settings and browser permissions.');
-                        return;
-                    }
-                    
-                    console.log('Audio capture started successfully, starting voice agent...');
-                    statusDiv.textContent = 'Starting voice agent...';
-                    
-                    // Now start the voice agent on the server (language synced with selected voice model)
-                    socket.emit('start_voice_agent', {
-                        inputDeviceId: inputSelect.value,
-                        industry: currentIndustry,
-                        voiceModel: currentVoiceModel,
-                        voiceName: currentVoiceName,
-                        language: currentLanguage,
-                        browserAudio: true // Flag to indicate browser is handling audio
-                    });
-                    
-                    startButton.textContent = 'Stop Voice Agent';
-                    statusDiv.textContent = 'Microphone: Active';
-                    isActive = true;
-                } catch (err) {
-                    console.error('Error in voice agent initialization:', err);
-                    statusDiv.textContent = 'Error: ' + err.message;
-                    alert('Error initializing voice agent: ' + err.message);
-                    stopAudioCapture(); // Clean up any partial initialization
-                }
+    function floatToInt16(float32) {
+      const out = new Int16Array(float32.length);
+      for (let i = 0; i < float32.length; i++) {
+        const s = Math.max(-1, Math.min(1, float32[i]));
+        out[i] = s < 0 ? Math.round(s * 32768) : Math.round(s * 32767);
+      }
+      return out;
+    }
+
+    function resampleFloatToInt16_16k(input, inSampleRate) {
+      const target = 16000;
+      if (!inSampleRate || inSampleRate === target) return floatToInt16(input);
+      const ratio = inSampleRate / target;
+      const newLen = Math.max(1, Math.round(input.length / ratio));
+      const out = new Int16Array(newLen);
+      for (let i = 0; i < newLen; i++) {
+        const idx = i * ratio;
+        const i0 = Math.floor(idx);
+        const i1 = Math.min(i0 + 1, input.length - 1);
+        const frac = idx - i0;
+        const sample = input[i0] + (input[i1] - input[i0]) * frac;
+        const s = Math.max(-1, Math.min(1, sample));
+        out[i] = s < 0 ? Math.round(s * 32768) : Math.round(s * 32767);
+      }
+      return out;
+    }
+
+    async function requestMicrophonePermission() {
+      try {
+        const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+        setStatus('connecting', 'Mic: Permission granted');
+        stream.getTracks().forEach(t => t.stop());
+        return true;
+      } catch (err) {
+        console.error('Error accessing microphone:', err);
+        setStatus('error', 'Mic: Permission denied');
+        return false;
+      }
+    }
+
+    async function startAudioCapture() {
+      try {
+        const deviceId = inputSelect.value;
+        let stream;
+        try {
+          stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+        } catch (permissionErr) {
+          console.error('Error getting microphone permission:', permissionErr);
+          alert('Microphone permission denied: ' + permissionErr.message);
+          return false;
+        }
+        try {
+          const audioConstraints = {
+            echoCancellation: true,
+            noiseSuppression: true,
+            channelCount: 1,
+            sampleRate: { ideal: 16000 }
+          };
+          if (deviceId && deviceId !== 'default') {
+            audioConstraints.deviceId = { exact: deviceId };
+          }
+          mediaStream = await navigator.mediaDevices.getUserMedia({ audio: audioConstraints });
+          try { stream.getTracks().forEach(t => t.stop()); } catch(_) {}
+        } catch (constraintErr) {
+          console.error('Error with audio constraints, falling back:', constraintErr);
+          mediaStream = stream;
+        }
+        try {
+          audioContext = new (window.AudioContext || window.webkitAudioContext)({ latencyHint: 'interactive' });
+          if (audioContext.state === 'suspended') {
+            try { await audioContext.resume(); } catch(_) {}
+          }
+          microphone = audioContext.createMediaStreamSource(mediaStream);
+          const bufferSize = 1024;
+          processor = audioContext.createScriptProcessor(bufferSize, 1, 1);
+          microphone.connect(processor);
+          const zeroGainNode = audioContext.createGain();
+          zeroGainNode.gain.value = 0.0;
+          processor.connect(zeroGainNode);
+          zeroGainNode.connect(audioContext.destination);
+          processor.onaudioprocess = function(e) {
+            if (!isActive) return;
+            const inputData = e.inputBuffer.getChannelData(0);
+            const inRate = audioContext.sampleRate;
+            let pcm16;
+            if (inRate !== 16000) {
+              pcm16 = resampleFloatToInt16_16k(inputData, inRate);
             } else {
-                socket.emit('stop_voice_agent');
-                stopAudioCapture();
-                startButton.textContent = 'Start Voice Agent';
-                statusDiv.textContent = 'Microphone: Not active';
-                isActive = false;
+              pcm16 = floatToInt16(inputData);
             }
-        });
-
-        // Audio processing variables
-        let audioContext;
-        let mediaStream;
-        let processor;
-        let microphone;
-        
-        // Helpers: Float32 -> Int16 and resample to 16kHz
-        function floatToInt16(float32) {
-            const out = new Int16Array(float32.length);
-            for (let i = 0; i < float32.length; i++) {
-                const s = Math.max(-1, Math.min(1, float32[i]));
-                out[i] = s < 0 ? Math.round(s * 32768) : Math.round(s * 32767);
-            }
-            return out;
+            socket.emit('audio_data', { audio: pcm16.buffer, sampleRate: 16000 });
+          };
+          return true;
+        } catch (audioErr) {
+          console.error('Error setting up audio processing:', audioErr);
+          if (mediaStream) mediaStream.getTracks().forEach(t => t.stop());
+          alert('Error setting up audio processing: ' + audioErr.message);
+          return false;
         }
+      } catch (err) {
+        console.error('Unexpected error in startAudioCapture:', err);
+        alert('Unexpected error starting audio capture: ' + err.message);
+        return false;
+      }
+    }
 
-        // Linear interpolation resampler to 16 kHz for streaming chunks
-        function resampleFloatToInt16_16k(input, inSampleRate) {
-            const target = 16000;
-            if (!inSampleRate || inSampleRate === target) return floatToInt16(input);
-            const ratio = inSampleRate / target;
-            const newLen = Math.max(1, Math.round(input.length / ratio));
-            const out = new Int16Array(newLen);
-            for (let i = 0; i < newLen; i++) {
-                const idx = i * ratio;
-                const i0 = Math.floor(idx);
-                const i1 = Math.min(i0 + 1, input.length - 1);
-                const frac = idx - i0;
-                const sample = input[i0] + (input[i1] - input[i0]) * frac;
-                const s = Math.max(-1, Math.min(1, sample));
-                out[i] = s < 0 ? Math.round(s * 32768) : Math.round(s * 32767);
-            }
-            return out;
+    function stopAudioCapture() {
+      if (processor) { processor.disconnect(); processor = null; }
+      if (microphone) { microphone.disconnect(); microphone = null; }
+      if (mediaStream) { mediaStream.getTracks().forEach(t => t.stop()); mediaStream = null; }
+      if (audioContext && audioContext.state !== 'closed') { audioContext.close(); audioContext = null; }
+      stopAudioOutput();
+    }
+
+    // ── Audio output ───────────────────────────────────────
+    let audioOutputContext = null;
+    let nextPlayTime = 0;
+    let audioOutputSampleRate = 16000;
+    let lastSeq = -1;
+
+    function playAudioOutput(audioData, sampleRate) {
+      try {
+        if (!audioOutputContext) {
+          audioOutputContext = new (window.AudioContext || window.webkitAudioContext)();
+          nextPlayTime = audioOutputContext.currentTime;
         }
-        
-        async function requestMicrophonePermission() {
-            try {
-                const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
-                statusDiv.textContent = 'Microphone: Permission granted';
-                stream.getTracks().forEach(track => track.stop()); // Stop the stream as we don't need it yet
-                return true;
-            } catch (err) {
-                console.error('Error accessing microphone:', err);
-                statusDiv.textContent = 'Microphone: Permission denied';
-                return false;
-            }
+        if (sampleRate) audioOutputSampleRate = sampleRate;
+        const pcmData = new Int16Array(audioData);
+        const floatData = new Float32Array(pcmData.length);
+        for (let i = 0; i < pcmData.length; i++) {
+          floatData[i] = pcmData[i] / 32768.0;
         }
-        
-        async function startAudioCapture() {
-            try {
-                // Get the selected device ID
-                const deviceId = inputSelect.value;
-                
-                console.log('Starting audio capture with device ID:', deviceId);
-                
-                // Step 1: Request microphone permission with minimal constraints first
-                console.log('Requesting microphone permission...');
-                let stream;
-                try {
-                    // First try with just basic audio permission
-                    stream = await navigator.mediaDevices.getUserMedia({ audio: true });
-                    console.log('Basic microphone permission granted');
-                } catch (permissionErr) {
-                    console.error('Error getting microphone permission:', permissionErr);
-                    alert('Microphone permission denied: ' + permissionErr.message);
-                    return false;
-                }
-                
-                // Step 2: Now that we have permission, try with our desired constraints
-                try {
-                    // Configure audio constraints
-                    const audioConstraints = {
-                        // Use minimal constraints for better compatibility
-                        echoCancellation: true,
-                        noiseSuppression: true,
-                        channelCount: 1,
-                        sampleRate: { ideal: 16000 }
-                    };
-                    
-                    // Add deviceId constraint if a specific device is selected
-                    if (deviceId && deviceId !== 'default') {
-                        audioConstraints.deviceId = { exact: deviceId };
-                    }
-                    
-                    // Get the audio stream with our desired constraints
-                    mediaStream = await navigator.mediaDevices.getUserMedia({
-                        audio: audioConstraints
-                    });
-                    
-                    console.log('MediaStream obtained successfully with constraints');
-                    try {
-                        const t = mediaStream.getAudioTracks && mediaStream.getAudioTracks()[0];
-                        const settings = t && t.getSettings ? t.getSettings() : null;
-                        console.log('Microphone track settings:', settings);
-                    } catch(_) {}
-                    
-                    // We successfully obtained a new constrained stream; stop the initial permission stream
-                    try { stream.getTracks().forEach(track => track.stop()); } catch(_) {}
-                } catch (constraintErr) {
-                    console.error('Error with audio constraints, falling back to basic stream:', constraintErr);
-                    // If constraints fail, use the original stream
-                    mediaStream = stream; // keep original stream active (not stopped)
-                }
-                
-                // Step 3: Create audio context and processing pipeline
-                try {
-                    // Create audio context with low-latency preference
-                    audioContext = new (window.AudioContext || window.webkitAudioContext)({ latencyHint: 'interactive' });
-                    // Ensure the context is running
-                    if (audioContext.state === 'suspended') {
-                        try { await audioContext.resume(); } catch (_) {}
-                    }
-                    console.log('AudioContext created with input sample rate:', audioContext.sampleRate);
-                    
-                    // Create microphone source
-                    microphone = audioContext.createMediaStreamSource(mediaStream);
-                    console.log('Microphone source created');
-                    
-                    // Create script processor node for audio processing
-                    // Note: ScriptProcessorNode is deprecated but has better browser support than AudioWorklet
-                    const bufferSize = 1024;
-                    processor = audioContext.createScriptProcessor(bufferSize, 1, 1);
-                    console.log('Processor created with buffer size:', bufferSize);
-                    
-                    // Connect the nodes
-                    microphone.connect(processor);
-                    // Route to a zero-gain sink to avoid audible mic playback while keeping processor active
-                    const zeroGainNode = audioContext.createGain();
-                    zeroGainNode.gain.value = 0.0;
-                    processor.connect(zeroGainNode);
-                    zeroGainNode.connect(audioContext.destination);
-                    
-                    // Process audio data
-                    processor.onaudioprocess = function(e) {
-                        if (!isActive) return;
-                        
-                        // Get input mono channel
-                        const inputData = e.inputBuffer.getChannelData(0);
-                        const inRate = audioContext.sampleRate;
-                        
-                        // Resample to 16 kHz and convert to Int16 for server-side compatibility
-                        let pcm16;
-                        if (inRate !== 16000) {
-                            pcm16 = resampleFloatToInt16_16k(inputData, inRate);
-                        } else {
-                            pcm16 = floatToInt16(inputData);
-                        }
-                        
-                        // Send the audio data to the server (binary transfer via Socket.IO)
-                        socket.emit('audio_data', {
-                            audio: pcm16.buffer,
-                            sampleRate: 16000
-                        });
-                    };
-                    
-                    console.log('Audio capture setup complete');
-                    return true;
-                } catch (audioErr) {
-                    console.error('Error setting up audio processing:', audioErr);
-                    // Clean up the stream if audio processing setup fails
-                    if (mediaStream) {
-                        mediaStream.getTracks().forEach(track => track.stop());
-                    }
-                    alert('Error setting up audio processing: ' + audioErr.message);
-                    return false;
-                }
-            } catch (err) {
-                console.error('Unexpected error in startAudioCapture:', err);
-                alert('Unexpected error starting audio capture: ' + err.message);
-                return false;
-            }
+        const audioBuffer = audioOutputContext.createBuffer(1, floatData.length, audioOutputSampleRate);
+        audioBuffer.getChannelData(0).set(floatData);
+        scheduleAudioBuffer(audioBuffer);
+      } catch (err) {
+        console.error('Error processing audio output:', err);
+      }
+    }
+
+    function scheduleAudioBuffer(audioBuffer) {
+      try {
+        const source = audioOutputContext.createBufferSource();
+        source.buffer = audioBuffer;
+        const gainNode = audioOutputContext.createGain();
+        gainNode.gain.value = 1.0;
+        source.connect(gainNode);
+        gainNode.connect(audioOutputContext.destination);
+        const currentTime = audioOutputContext.currentTime;
+        if (nextPlayTime <= currentTime + 0.03) {
+          nextPlayTime = currentTime + 0.03;
         }
-        
-        function stopAudioCapture() {
-            if (processor) {
-                processor.disconnect();
-                processor = null;
-            }
-            
-            if (microphone) {
-                microphone.disconnect();
-                microphone = null;
-            }
-            
-            if (mediaStream) {
-                mediaStream.getTracks().forEach(track => track.stop());
-                mediaStream = null;
-            }
-            
-            if (audioContext && audioContext.state !== 'closed') {
-                audioContext.close();
-                audioContext = null;
-            }
-            
-            // Also stop audio output
-            stopAudioOutput();
+        source.start(nextPlayTime);
+        nextPlayTime += audioBuffer.duration;
+      } catch (err) {
+        console.error('Error scheduling audio buffer:', err);
+        nextPlayTime = audioOutputContext.currentTime;
+      }
+    }
+
+    function stopAudioOutput() {
+      nextPlayTime = 0;
+      lastSeq = -1;
+      if (audioOutputContext && audioOutputContext.state !== 'closed') {
+        audioOutputContext.close();
+        audioOutputContext = null;
+      }
+      audioOutputSampleRate = 16000;
+    }
+
+    // ── Start/Stop button ──────────────────────────────────
+    startBtn.addEventListener('click', async () => {
+      if (!isActive) {
+        try {
+          setStatus('connecting', 'Initializing audio...');
+
+          const hasPermission = await requestMicrophonePermission();
+          if (!hasPermission) {
+            setStatus('error', 'Mic permission denied');
+            alert('Microphone permission is required for the voice agent to work.');
+            return;
+          }
+
+          const captureStarted = await startAudioCapture();
+          if (!captureStarted) {
+            setStatus('error', 'Audio capture failed');
+            alert('Failed to start audio capture. Please check your microphone settings.');
+            return;
+          }
+
+          setStatus('connecting', 'Starting agent...');
+
+          // Use selectedConfig for industry/config, fall back to defaults
+          const industry = selectedConfig ? selectedConfig.id : 'deepgram';
+          socket.emit('start_voice_agent', {
+            inputDeviceId: inputSelect.value,
+            industry: industry,
+            voiceModel: currentVoiceModel,
+            voiceName: currentVoiceName,
+            language: currentLanguage,
+            browserAudio: true
+          });
+
+          startBtn.innerHTML = '<i class="fa fa-stop"></i> Stop Session';
+          setStatus('active', 'Active');
+          isActive = true;
+
+          // Clear welcome message on first start
+          const welcome = document.getElementById('welcome-message');
+          if (welcome) welcome.remove();
+
+        } catch (err) {
+          console.error('Error in voice agent initialization:', err);
+          setStatus('error', 'Error: ' + err.message);
+          alert('Error initializing voice agent: ' + err.message);
+          stopAudioCapture();
         }
+      } else {
+        socket.emit('stop_voice_agent');
+        stopAudioCapture();
+        startBtn.innerHTML = '<i class="fa fa-microphone"></i> Start Session';
+        setStatus('idle', 'Ready');
+        isActive = false;
+      }
+    });
 
-        function createSpacer(height) {
-            const spacer = document.createElement('div');
-            spacer.className = 'timeline-spacer';
-            spacer.style.height = `${height}px`;
-            return spacer;
+    // ── SocketIO event handlers ────────────────────────────
+    socket.on('connect', () => {
+      console.log('Connected to server');
+    });
+
+    socket.on('disconnect', () => {
+      console.log('Disconnected from server');
+      isActive = false;
+      startBtn.innerHTML = '<i class="fa fa-microphone"></i> Start Session';
+      setStatus('idle', 'Disconnected');
+    });
+
+    socket.on('error', (error) => {
+      console.error('Socket error:', error);
+      alert('An error occurred. Please check the console for details.');
+    });
+
+    socket.on('conversation_update', (data) => {
+      appendConversationMessage(data);
+    });
+
+    socket.on('log_message', (data) => {
+      appendEventLog(data);
+    });
+
+    socket.on('audio_output', (data) => {
+      if (isActive) {
+        if (typeof data.seq === 'number') {
+          if (lastSeq !== -1 && data.seq !== lastSeq + 1) {
+            console.warn('Audio chunk out of order', { expected: lastSeq + 1, got: data.seq });
+          }
+          lastSeq = data.seq;
         }
+        playAudioOutput(data.audio, data.sampleRate);
+      }
+    });
 
-        function scrollToBottom() {
-            requestAnimationFrame(() => {
-                // Always pin conversation to bottom
-                conversationMessages.scrollTop = conversationMessages.scrollHeight;
+    socket.on('stop_audio_output', () => {
+      stopAudioOutput();
+    });
 
-                // For logs, prefer to keep the last real log visible near the bottom
-                if (lastLogElement && logMessages.contains(lastLogElement)) {
-                    const lastTop = lastLogElement.offsetTop;
-                    const desired = lastTop - (logMessages.clientHeight - lastLogElement.offsetHeight);
-                    const maxScroll = Math.max(0, logMessages.scrollHeight - logMessages.clientHeight);
-                    logMessages.scrollTop = Math.min(Math.max(desired, 0), maxScroll);
-                } else {
-                    // Fallback: bottom
-                    logMessages.scrollTop = logMessages.scrollHeight;
-                }
-            });
+    // ── Conversation display ───────────────────────────────
+    function appendConversationMessage(data) {
+      const div = document.createElement('div');
+      div.style.cssText = 'margin-bottom: 0.75rem; padding: 0.5rem 0.75rem; border-radius: 6px;';
+
+      const roleLabel = document.createElement('span');
+      roleLabel.style.cssText = 'font-size: 0.7rem; font-weight: 700; text-transform: uppercase; letter-spacing: 0.05em; display: block; margin-bottom: 0.25rem;';
+
+      const contentSpan = document.createElement('span');
+      contentSpan.style.cssText = 'font-size: 0.9rem; line-height: 1.4;';
+      contentSpan.textContent = data.content;
+
+      if (data.role === 'assistant' || data.role === 'agent') {
+        div.style.background = 'rgba(19, 239, 149, 0.05)';
+        div.style.borderLeft = '3px solid #13ef95';
+        roleLabel.style.color = '#13ef95';
+        roleLabel.textContent = 'Agent';
+      } else if (data.role === 'user') {
+        div.style.background = 'rgba(255,255,255,0.04)';
+        div.style.borderLeft = '3px solid #666';
+        roleLabel.style.color = '#aaa';
+        roleLabel.textContent = 'You';
+      } else {
+        div.style.background = 'rgba(255,200,0,0.05)';
+        div.style.borderLeft = '3px solid #666';
+        roleLabel.style.color = '#888';
+        roleLabel.textContent = data.role || 'System';
+      }
+
+      div.appendChild(roleLabel);
+      div.appendChild(contentSpan);
+      conversationLog.appendChild(div);
+      conversationLog.scrollTop = conversationLog.scrollHeight;
+    }
+
+    function appendEventLog(data) {
+      const div = document.createElement('div');
+      div.style.cssText = 'padding: 2px 0; border-bottom: 1px solid rgba(255,255,255,0.05); word-break: break-all;';
+      div.innerHTML = convertAnsiToHtml(data.message || JSON.stringify(data));
+      eventLog.appendChild(div);
+      eventLog.scrollTop = eventLog.scrollHeight;
+    }
+
+    function convertAnsiToHtml(text) {
+      const colorMap = {
+        '[38;5;231m': 'color: #fff;',
+        '[38;5;116m': 'color: #87d7d7;',
+        '[38;5;114m': 'color: #87d787;',
+        '[38;5;183m': 'color: #d7afff;',
+        '[38;5;186m': 'color: #d7d787;',
+      };
+      let html = text.replace(/\[0m/g, '');
+      for (const [ansi, style] of Object.entries(colorMap)) {
+        const parts = html.split(ansi);
+        if (parts.length > 1) {
+          html = parts.map((part, i) => {
+            if (i === 0) return part;
+            return `<span style="${style}">${part}</span>`;
+          }).join('');
         }
+      }
+      return html;
+    }
 
-        // Add a message to the conversation display
-        function addConversationMessage(data) {
-            const timestamp = new Date().toISOString();
-            const currentCounter = messageCounter++;
-            messageOrder.push({ id: currentCounter, timestamp: timestamp, type: 'conversation' });
-            
-            const messageDiv = document.createElement('div');
-            messageDiv.className = `timeline-item message ${data.role}`;
-            messageDiv.textContent = `${data.role}: ${data.content}`;
-            messageDiv.dataset.messageId = currentCounter;
-            
-            insertTimelineItem(messageDiv, timestamp, conversationMessages);
+    // ── Function toggles in builder ────────────────────────
+    const KNOWN_FUNCTIONS = [
+      'agent_filler', 'find_customer', 'get_appointments',
+      'get_orders', 'create_appointment', 'check_availability', 'end_call'
+    ];
 
-            // Measure after layout to get accurate height, then create matching spacer
-            requestAnimationFrame(() => {
-                const actualHeight = messageDiv.offsetHeight;
-                messageHeights.set(currentCounter, actualHeight);
+    function renderFunctionToggles() {
+      const container = document.getElementById('builder-functions');
+      container.innerHTML = '';
+      KNOWN_FUNCTIONS.forEach(fn => {
+        const label = document.createElement('label');
+        label.style.cssText = 'display: flex; align-items: center; gap: 0.5rem; cursor: pointer; font-size: 0.875rem;';
+        const cb = document.createElement('input');
+        cb.type = 'checkbox';
+        cb.name = 'functions';
+        cb.value = fn;
+        cb.checked = true;
+        label.appendChild(cb);
+        label.appendChild(document.createTextNode(fn));
+        container.appendChild(label);
+      });
+    }
 
-                const logSpacer = createSpacer(actualHeight);
-                logSpacer.dataset.messageId = currentCounter;
-                insertTimelineItem(logSpacer, timestamp, logMessages);
-
-                if (!showLogsToggle.checked) {
-                    logSpacer.style.display = 'none';
-                    logSpacer.style.height = '0';
-                }
-
-                scrollToBottom();
-            });
-        }
-
-        socket.on('conversation_update', (data) => {
-            const timestamp = data.timestamp || new Date().toISOString();
-            const currentCounter = messageCounter++;
-            messageOrder.push({ id: currentCounter, timestamp: timestamp, type: 'conversation' });
-            
-            const messageDiv = document.createElement('div');
-            messageDiv.className = `timeline-item message ${data.role}`;
-            messageDiv.textContent = `${data.role}: ${data.content}`;
-            messageDiv.dataset.messageId = currentCounter;
-            
-            insertTimelineItem(messageDiv, timestamp, conversationMessages);
-            
-            requestAnimationFrame(() => {
-                const actualHeight = messageDiv.offsetHeight;
-                messageHeights.set(currentCounter, actualHeight);
-                
-                const logSpacer = createSpacer(actualHeight);
-                logSpacer.dataset.messageId = currentCounter;
-                insertTimelineItem(logSpacer, timestamp, logMessages);
-                
-                if (!showLogsToggle.checked) {
-                    logSpacer.style.display = 'none';
-                    logSpacer.style.height = '0';
-                }
-                
-                scrollToBottom();
-            });
-        });
-
-        socket.on('log_message', (data) => {
-            const currentCounter = messageCounter++;
-            messageOrder.push({ id: currentCounter, timestamp: data.timestamp, type: 'log' });
-            
-            const logDiv = document.createElement('div');
-            logDiv.className = 'timeline-item log-message';
-            logDiv.setAttribute('data-original-text', data.message);
-            logDiv.innerHTML = convertAnsiToHtml(data.message);
-            logDiv.dataset.messageId = currentCounter;
-            
-            insertTimelineItem(logDiv, data.timestamp, logMessages);
-            
-            requestAnimationFrame(() => {
-                const actualHeight = logDiv.offsetHeight;
-                messageHeights.set(currentCounter, actualHeight);
-                
-                const conversationSpacer = createSpacer(actualHeight);
-                conversationSpacer.dataset.messageId = currentCounter;
-                insertTimelineItem(conversationSpacer, data.timestamp, conversationMessages);
-                
-                if (!showLogsToggle.checked) {
-                    conversationSpacer.style.display = 'none';
-                    conversationSpacer.style.height = '0';
-                }
-                
-                scrollToBottom();
-            });
-        });
-
-        function insertTimelineItem(element, timestamp, container) {
-            element.dataset.timestamp = timestamp;
-            container.appendChild(element);
-        }
-
-        function convertAnsiToHtml(text) {
-            const ansiToHtml = {
-                // Dark mode colors
-                dark: {
-                    '[38;5;231m': 'color: #fff;',     // WHITE
-                    '[38;5;116m': 'color: #87d7d7;',  // BLUE
-                    '[38;5;114m': 'color: #87d787;',  // GREEN
-                    '[38;5;183m': 'color: #d7afff;',  // VIOLET
-                    '[38;5;186m': 'color: #d7d787;',  // YELLOW
-                },
-                // Light mode colors (darker variants)
-                light: {
-                    '[38;5;231m': 'color: #000;',     // BLACK
-                    '[38;5;116m': 'color: #0086b3;',  // BLUE
-                    '[38;5;114m': 'color: #008744;',  // GREEN
-                    '[38;5;183m': 'color: #8b3d90;',  // VIOLET
-                    '[38;5;186m': 'color: #b36d00;',  // YELLOW
-                },
-                // Reset is the same for both
-                '[0m': ''
-            };
-
-            // First remove all reset codes from the text
-            let html = text.replace(/\[0m/g, '');
-            const isDarkMode = document.body.classList.contains('dark-mode');
-            const colorSet = isDarkMode ? ansiToHtml.dark : ansiToHtml.light;
-
-            for (const [ansi, style] of Object.entries(colorSet)) {
-                const parts = html.split(ansi);
-                if (parts.length > 1) {
-                    html = parts.map((part, i) => {
-                        if (i === 0) return part;
-                        return `<span style="${style}">${part}</span>`;
-                    }).join('');
-                }
-            }
-
-            return html;
-        }
-
-        socket.on('connect', () => {
-            console.log('Connected to server');
-        });
-
-        socket.on('disconnect', () => {
-            console.log('Disconnected from server');
-            isActive = false;
-            startButton.textContent = 'Start Voice Agent';
-            statusDiv.textContent = 'Microphone: Not active';
-        });
-
-        socket.on('error', (error) => {
-            console.error('Socket error:', error);
-            alert('An error occurred. Please check the console for details.');
-        });
-        
-        // Audio output variables
-        let audioOutputContext = null;
-        let audioOutputQueue = [];
-        let isAudioOutputPlaying = false;
-        let nextPlayTime = 0; // Track when the next audio chunk should start
-        let audioOutputSampleRate = 16000; // Default, will be updated from server
-        let lastSeq = -1; // Track last received audio sequence number
-        
-        // Function to play audio output received from the server
-        function playAudioOutput(audioData, sampleRate) {
-            try {
-                // Create audio context if it doesn't exist
-                if (!audioOutputContext) {
-                    audioOutputContext = new (window.AudioContext || window.webkitAudioContext)();
-                    // Initialize nextPlayTime to current audio context time
-                    nextPlayTime = audioOutputContext.currentTime;
-                }
-                
-                // Update sample rate if provided
-                if (sampleRate) {
-                    audioOutputSampleRate = sampleRate;
-                }
-                
-                // Convert the binary audio data to Int16Array (raw PCM format from server)
-                const pcmData = new Int16Array(audioData);
-                
-                // Create a float32 array for the audio buffer
-                const floatData = new Float32Array(pcmData.length);
-                
-                // Convert Int16 PCM to Float32 audio data
-                for (let i = 0; i < pcmData.length; i++) {
-                    // Convert from Int16 (-32768 to 32767) to Float32 (-1.0 to 1.0)
-                    floatData[i] = pcmData[i] / 32768.0;
-                }
-                
-                // Create an audio buffer with the correct sample rate
-                const audioBuffer = audioOutputContext.createBuffer(1, floatData.length, audioOutputSampleRate);
-                audioBuffer.getChannelData(0).set(floatData);
-                
-                // Schedule the audio buffer for seamless playback
-                scheduleAudioBuffer(audioBuffer);
-                
-            } catch (err) {
-                console.error('Error processing audio output:', err);
-            }
-        }
-        
-        // Schedule audio buffer for seamless playback
-        function scheduleAudioBuffer(audioBuffer) {
-            try {
-                // Create audio source
-                const source = audioOutputContext.createBufferSource();
-                source.buffer = audioBuffer;
-                
-                // Add a gain node for volume control
-                const gainNode = audioOutputContext.createGain();
-                gainNode.gain.value = 1.0; // Full volume
-                
-                // Connect the nodes
-                source.connect(gainNode);
-                gainNode.connect(audioOutputContext.destination);
-                
-                // Calculate when this chunk should start playing
-                const currentTime = audioOutputContext.currentTime;
-                const bufferDuration = audioBuffer.duration;
-                
-                // If nextPlayTime is in the past or too close to current time, move it slightly ahead
-                if (nextPlayTime <= currentTime + 0.03) {
-                    nextPlayTime = currentTime + 0.03; // Small buffer to prevent glitches
-                }
-                
-                // Schedule the audio to start at the calculated time
-                source.start(nextPlayTime);
-                
-                // Update nextPlayTime for the next chunk
-                nextPlayTime += bufferDuration;
-                
-            } catch (err) {
-                console.error('Error scheduling audio buffer:', err);
-                // Reset timing on error
-                nextPlayTime = audioOutputContext.currentTime;
-            }
-        }
-        
-        // Clean up audio output resources
-        function stopAudioOutput() {
-            // Reset timing
-            nextPlayTime = 0;
-            // Reset sequence tracking
-            lastSeq = -1;
-            
-            // Close the audio context to release resources
-            if (audioOutputContext && audioOutputContext.state !== 'closed') {
-                audioOutputContext.close();
-                audioOutputContext = null;
-            }
-            
-            // Reset variables
-            audioOutputSampleRate = 16000;
-        }
-
-        socket.on('audio_output', (data) => {
-            if (isActive) {
-                if (typeof data.seq === 'number') {
-                    if (lastSeq !== -1 && data.seq !== lastSeq + 1) {
-                        console.warn('Audio chunk out of order', { expected: lastSeq + 1, got: data.seq });
-                    }
-                    lastSeq = data.seq;
-                }
-                playAudioOutput(data.audio, data.sampleRate);
-            }
-        });
-
-        // Stop browser audio output immediately on server instruction (interruptions or end of speech)
-        socket.on('stop_audio_output', () => {
-            stopAudioOutput();
-        });
-
-        showLogsToggle.addEventListener('change', () => {
-            logsColumn.style.display = showLogsToggle.checked ? 'flex' : 'none';
-
-            if (showLogsToggle.checked) {
-                // After layout changes (column widths), re-measure all message heights
-                requestAnimationFrame(() => {
-                    // Update heights for conversation messages
-                    conversationMessages.querySelectorAll('.timeline-item.message').forEach(el => {
-                        const id = parseInt(el.dataset.messageId);
-                        if (!isNaN(id)) {
-                            messageHeights.set(id, el.offsetHeight);
-                        }
-                    });
-
-                    // Update heights for log messages
-                    logMessages.querySelectorAll('.timeline-item.log-message').forEach(el => {
-                        const id = parseInt(el.dataset.messageId);
-                        if (!isNaN(id)) {
-                            messageHeights.set(id, el.offsetHeight);
-                        }
-                    });
-
-                    // Ensure spacers are visible with correct heights
-                    const allSpacers = document.querySelectorAll('.timeline-spacer');
-                    allSpacers.forEach(spacer => {
-                        spacer.style.display = 'block';
-                        const messageId = parseInt(spacer.dataset.messageId);
-                        const height = messageHeights.get(messageId) || 0;
-                        spacer.style.height = `${height}px`;
-                    });
-
-                    // Make sure each message has its counterpart spacer visible with matched height
-                    messageOrder.sort((a, b) => new Date(a.timestamp) - new Date(b.timestamp));
-                    messageOrder.forEach(message => {
-                        const height = messageHeights.get(message.id) || 0;
-                        const logEl = logMessages.querySelector(`[data-message-id="${message.id}"]`);
-                        const convoEl = conversationMessages.querySelector(`[data-message-id="${message.id}"]`);
-
-                        if (message.type === 'log') {
-                            if (logEl) logEl.style.display = 'block';
-                            if (convoEl && convoEl.classList.contains('timeline-spacer')) {
-                                convoEl.style.display = 'block';
-                                convoEl.style.height = `${height}px`;
-                            }
-                        } else { // conversation
-                            if (convoEl) convoEl.style.display = 'block';
-                            if (logEl && logEl.classList.contains('timeline-spacer')) {
-                                logEl.style.display = 'block';
-                                logEl.style.height = `${height}px`;
-                            }
-                        }
-                    });
-
-                    scrollToBottom();
-                });
-            } else {
-                const allSpacers = document.querySelectorAll('.timeline-spacer');
-                allSpacers.forEach(spacer => {
-                    spacer.style.display = 'none';
-                    spacer.style.height = '0';
-                });
-            }
-        });
-
-        // Initialize logs visibility
-        logsColumn.style.display = showLogsToggle.checked ? 'flex' : 'none';
-
-        const darkModeToggle = document.getElementById('darkMode');
-        
-        // Initialize theme
-        document.body.classList.toggle('dark-mode', darkModeToggle.checked);
-        
-        // Theme toggle handler
-        darkModeToggle.addEventListener('change', () => {
-            document.body.classList.toggle('dark-mode', darkModeToggle.checked);
-            
-            // Save preference
-            localStorage.setItem('darkMode', darkModeToggle.checked);
-            
-            // Reprocess all log messages with new colors
-            const logMessages = document.querySelectorAll('.timeline-item.log-message');
-            logMessages.forEach(logMessage => {
-                const originalText = logMessage.getAttribute('data-original-text');
-                if (originalText) {
-                    logMessage.innerHTML = convertAnsiToHtml(originalText);
-                }
-            });
-        });
-        
-        // Load saved preference
-        document.addEventListener('DOMContentLoaded', () => {
-            const savedDarkMode = localStorage.getItem('darkMode');
-            if (savedDarkMode !== null) {
-                const isDarkMode = savedDarkMode === 'true';
-                darkModeToggle.checked = isDarkMode;
-                document.body.classList.toggle('dark-mode', isDarkMode);
-            }
-        });
-
-        function toggleCustomer(card) {
-            const wasCollapsed = card.classList.contains('collapsed');
-            
-            // First collapse all cards
-            document.querySelectorAll('.customer-card').forEach(otherCard => {
-                otherCard.classList.add('collapsed');
-            });
-            
-            // Then expand the clicked card if it was collapsed
-            if (wasCollapsed) {
-                card.classList.remove('collapsed');
-            }
-        }
-
-        // Initialize all cards as collapsed
-        document.addEventListener('DOMContentLoaded', () => {
-            const cards = document.querySelectorAll('.customer-card');
-            cards.forEach(card => {
-                card.classList.add('collapsed');
-                // Add click handler to entire card
-                card.addEventListener('click', () => toggleCustomer(card));
-            });
-        });
-    </script>
+    // ── Init ───────────────────────────────────────────────
+    document.addEventListener('DOMContentLoaded', () => {
+      loadConfigs();
+      loadTTSModels();
+      loadAudioDevices();
+      renderFunctionToggles();
+    });
+  </script>
 </body>
 </html>

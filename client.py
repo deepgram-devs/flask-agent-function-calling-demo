@@ -717,20 +717,32 @@ def handle_start_voice_agent(data=None):
     global voice_agent
     logger.info(f"Starting voice agent with data: {data}")
     if voice_agent is None:
-        # Get industry from data or default to deepgram
-        industry = data.get("industry", "deepgram") if data else "deepgram"
+        # Accept config_id (new) or industry (legacy) — config_id takes precedence
+        config_id = data.get("config_id") or data.get("industry", "deepgram") if data else "deepgram"
+
+        # Load full config from JSON if available, then allow per-call overrides
+        cfg = AgentTemplates.load(config_id)
+        if cfg:
+            default_voice_model = cfg.get("voiceModel", "aura-2-thalia-en")
+            default_voice_name = cfg.get("voiceName", "")
+            default_language = cfg.get("language", "en")
+        else:
+            default_voice_model = "aura-2-thalia-en"
+            default_voice_name = ""
+            default_language = "en"
+
         voiceModel = (
-            data.get("voiceModel", "aura-2-thalia-en") if data else "aura-2-thalia-en"
+            data.get("voiceModel", default_voice_model) if data else default_voice_model
         )
-        # Get voice name from data or default to empty string, which uses the Model's voice name in the backend
-        voiceName = data.get("voiceName", "") if data else ""
-        # Get language from data or default to en (used in agent config)
-        language = data.get("language", "en") if data else "en"
+        # Get voice name from data or derive from config/model
+        voiceName = data.get("voiceName", default_voice_name) if data else default_voice_name
+        # Get language from data or use config default
+        language = data.get("language", default_language) if data else default_language
         # Check if browser is handling audio capture
         browser_audio = data.get("browserAudio", False) if data else False
 
         voice_agent = VoiceAgent(
-            industry=industry,
+            industry=config_id,
             voiceModel=voiceModel,
             voiceName=voiceName,
             language=language,

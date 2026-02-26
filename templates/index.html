@@ -612,6 +612,12 @@
     startBtn.addEventListener('click', async () => {
       if (!isActive) {
         try {
+          // Require a config to be selected before starting
+          if (!selectedConfig) {
+            alert('Please select a demo first.');
+            return;
+          }
+
           setStatus('connecting', 'Initializing audio...');
 
           const hasPermission = await requestMicrophonePermission();
@@ -630,11 +636,11 @@
 
           setStatus('connecting', 'Starting agent...');
 
-          // Use selectedConfig for industry/config, fall back to defaults
-          const industry = selectedConfig ? selectedConfig.id : 'deepgram';
+          // Send config_id (new) alongside industry (legacy backward compat)
           socket.emit('start_voice_agent', {
             inputDeviceId: inputSelect.value,
-            industry: industry,
+            config_id: selectedConfig.id,
+            industry: selectedConfig.id,
             voiceModel: currentVoiceModel,
             voiceName: currentVoiceName,
             language: currentLanguage,

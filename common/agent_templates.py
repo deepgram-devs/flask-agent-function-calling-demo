@@ -2,7 +2,7 @@ import json
 import os
 import glob
 from pathlib import Path
-from common.agent_functions import FUNCTION_DEFINITIONS
+from common.agent_functions import FUNCTION_DEFINITIONS, CHECK_HOTWORD_DEFINITION, set_hotword
 from common.prompt_templates import DEEPGRAM_PROMPT_TEMPLATE, PROMPT_TEMPLATE
 from datetime import datetime
 
@@ -109,8 +109,10 @@ class AgentTemplates:
             greeting = cfg.get("greeting", "Hello, how can I help you today?")
             voice_model = cfg.get("voiceModel", voiceModel)
             config_language = cfg.get("language", language)
-            # Substitute {{agentName}} with the voice name derived from the model
-            agent_name = AgentTemplates._voice_name_from_model(voice_model or voiceModel)
+            hotword = cfg.get("hotword")
+            # Substitute {{agentName}} using the caller-passed voice name/model,
+            # not the config default (which would ignore the user's selection)
+            agent_name = voiceName if voiceName else AgentTemplates._voice_name_from_model(voiceModel)
             system_prompt = system_prompt.replace("{{agentName}}", agent_name)
             greeting = greeting.replace("{{agentName}}", agent_name)
         else:
@@ -121,6 +123,7 @@ class AgentTemplates:
             greeting = "Hello, how can I help you today?"
             voice_model = voiceModel
             config_language = language
+            hotword = None
 
             # Special case: deepgram industry still uses doc-based prompt
             if industry == "deepgram":
@@ -135,6 +138,21 @@ class AgentTemplates:
             voice_model = voiceModel
         if language != "en":
             config_language = language
+
+        # Hotword mode: register the hotword and extend system prompt + functions
+        set_hotword(hotword)
+        if hotword:
+            system_prompt += (
+                f"\n\nHOTWORD ACTIVATION (CRITICAL RULE):\n"
+                f"You are in hotword mode. The activation hotword is \"{hotword}\".\n"
+                f"You MUST call check_hotword with the exact transcript before responding to ANYTHING the user says.\n"
+                f"- If check_hotword returns {{\"active\": false}}: Do not speak. Stay completely silent.\n"
+                f"- If check_hotword returns {{\"active\": true}}: Respond naturally to the \"query\" field.\n"
+                f"This rule applies to every single utterance, no exceptions."
+            )
+            functions = FUNCTION_DEFINITIONS + [CHECK_HOTWORD_DEFINITION]
+        else:
+            functions = FUNCTION_DEFINITIONS
 
         self.settings = {
             "type": "Settings",
@@ -154,7 +172,7 @@ class AgentTemplates:
                         "temperature": 0.7,
                     },
                     "prompt": system_prompt,
-                    "functions": FUNCTION_DEFINITIONS,
+                    "functions": functions,
                 },
                 "speak": {
                     "provider": {

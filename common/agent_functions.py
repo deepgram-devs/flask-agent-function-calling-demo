@@ -271,6 +271,61 @@ FUNCTION_DEFINITIONS = [
     },
 ]
 
+# ---------------------------------------------------------------------------
+# Hotword detection
+# ---------------------------------------------------------------------------
+
+_current_hotword: str | None = None
+
+
+def set_hotword(hotword: str | None):
+    global _current_hotword
+    _current_hotword = hotword.lower() if hotword else None
+
+
+async def check_hotword(params):
+    transcript = params.get("transcript", "")
+    hotword = _current_hotword
+
+    if not hotword:
+        return {"active": True, "query": transcript}
+
+    lower_transcript = transcript.lower()
+    if hotword in lower_transcript:
+        idx = lower_transcript.find(hotword)
+        query = transcript[idx + len(hotword):].strip()
+        return {
+            "active": True,
+            "query": query or transcript,
+        }
+    else:
+        return {
+            "active": False,
+            "instruction": "Hotword not detected. Do not speak. Stay silent.",
+        }
+
+
+CHECK_HOTWORD_DEFINITION = {
+    "name": "check_hotword",
+    "description": (
+        "MANDATORY: Call this function before responding to ANY user input. "
+        "Pass the exact transcript of what the user said. "
+        "If the result has active=false, do not speak at all — stay completely silent. "
+        "If the result has active=true, respond naturally to the 'query' field only."
+    ),
+    "parameters": {
+        "type": "object",
+        "properties": {
+            "transcript": {
+                "type": "string",
+                "description": "The exact transcript of what the user said.",
+            }
+        },
+        "required": ["transcript"],
+    },
+}
+
+
 # Map function names to their implementations
 FUNCTION_MAP = {
     "find_customer": find_customer,
@@ -280,4 +335,5 @@ FUNCTION_MAP = {
     "check_availability": check_availability,
     "agent_filler": agent_filler,
     "end_call": end_call,
+    "check_hotword": check_hotword,
 }

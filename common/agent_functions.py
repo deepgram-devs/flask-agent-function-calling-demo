@@ -1,4 +1,5 @@
 import json
+import re
 from datetime import datetime, timedelta
 import asyncio
 from .business_logic import (
@@ -290,10 +291,14 @@ async def check_hotword(params):
     if not hotword:
         return {"active": True, "query": transcript}
 
-    lower_transcript = transcript.lower()
-    if hotword in lower_transcript:
-        idx = lower_transcript.find(hotword)
-        query = transcript[idx + len(hotword):].strip()
+    # Build a regex that tolerates punctuation between hotword words
+    # e.g. "hey saga" matches "Hey, Saga." or "Hey Saga!" or "hey   saga"
+    words = hotword.lower().split()
+    pattern = r'\b' + r'[\s,\.!?\'\"]*'.join(re.escape(w) for w in words) + r'\b'
+    match = re.search(pattern, transcript, re.IGNORECASE)
+
+    if match:
+        query = transcript[match.end():].strip().lstrip('.,!? ')
         return {
             "active": True,
             "query": query or transcript,
@@ -309,7 +314,7 @@ CHECK_HOTWORD_DEFINITION = {
     "name": "check_hotword",
     "description": (
         "MANDATORY: Call this function before responding to ANY user input. "
-        "Pass the exact transcript of what the user said. "
+        "Pass ONLY the most recent utterance — not the full conversation history. "
         "If the result has active=false, do not speak at all — stay completely silent. "
         "If the result has active=true, respond naturally to the 'query' field only."
     ),
@@ -318,7 +323,7 @@ CHECK_HOTWORD_DEFINITION = {
         "properties": {
             "transcript": {
                 "type": "string",
-                "description": "The exact transcript of what the user said.",
+                "description": "The most recent thing the user just said (current utterance only, not history).",
             }
         },
         "required": ["transcript"],

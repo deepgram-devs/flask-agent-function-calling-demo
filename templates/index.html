@@ -506,6 +506,16 @@
           mediaStream = stream;
         }
         try {
+          // Create output AudioContext here (inside user gesture) so Chrome's
+          // autoplay policy doesn't block audio playback later
+          if (!audioOutputContext || audioOutputContext.state === 'closed') {
+            audioOutputContext = new (window.AudioContext || window.webkitAudioContext)();
+            nextPlayTime = audioOutputContext.currentTime;
+          }
+          if (audioOutputContext.state === 'suspended') {
+            await audioOutputContext.resume();
+          }
+
           audioContext = new (window.AudioContext || window.webkitAudioContext)({ latencyHint: 'interactive' });
           if (audioContext.state === 'suspended') {
             try { await audioContext.resume(); } catch(_) {}
@@ -560,7 +570,8 @@
 
     function playAudioOutput(audioData, sampleRate) {
       try {
-        if (!audioOutputContext) {
+        if (!audioOutputContext || audioOutputContext.state === 'closed') {
+          // Fallback only -- context should already be created in startAudioCapture
           audioOutputContext = new (window.AudioContext || window.webkitAudioContext)();
           nextPlayTime = audioOutputContext.currentTime;
         }

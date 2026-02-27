@@ -290,6 +290,12 @@ def set_hotword(hotword: str | None):
     _last_activity_time = 0.0
 
 
+async def close_hotword_session(params):
+    global _conversation_active
+    _conversation_active = False
+    return {"status": "closed"}
+
+
 async def check_hotword(params):
     global _conversation_active, _last_activity_time
     transcript = params.get("transcript", "")
@@ -329,6 +335,17 @@ async def check_hotword(params):
         }
 
 
+CLOSE_HOTWORD_SESSION_DEFINITION = {
+    "name": "close_hotword_session",
+    "description": (
+        "Call this function when the conversation triggered by the hotword is complete. "
+        "Triggers when the user's question is fully answered and they indicate satisfaction "
+        "(e.g. 'thanks', 'got it', 'okay', 'that's all', 'perfect', 'great'). "
+        "After calling this, return to silent listening mode — do not speak further unless the hotword is said again."
+    ),
+    "parameters": {"type": "object", "properties": {}},
+}
+
 CHECK_HOTWORD_DEFINITION = {
     "name": "check_hotword",
     "description": (
@@ -360,4 +377,5 @@ FUNCTION_MAP = {
     "agent_filler": agent_filler,
     "end_call": end_call,
     "check_hotword": check_hotword,
+    "close_hotword_session": close_hotword_session,
 }

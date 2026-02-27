@@ -2,7 +2,7 @@ import json
 import os
 import glob
 from pathlib import Path
-from common.agent_functions import FUNCTION_DEFINITIONS, CHECK_HOTWORD_DEFINITION, set_hotword
+from common.agent_functions import FUNCTION_DEFINITIONS, CHECK_HOTWORD_DEFINITION, CLOSE_HOTWORD_SESSION_DEFINITION, set_hotword
 from common.prompt_templates import DEEPGRAM_PROMPT_TEMPLATE, PROMPT_TEMPLATE
 from datetime import datetime
 
@@ -148,9 +148,14 @@ class AgentTemplates:
                 f"You MUST call check_hotword with the exact transcript before responding to ANYTHING the user says.\n"
                 f"- If check_hotword returns {{\"active\": false}}: Do not speak. Stay completely silent.\n"
                 f"- If check_hotword returns {{\"active\": true}}: Respond naturally to the \"query\" field.\n"
-                f"This rule applies to every single utterance, no exceptions."
+                f"This rule applies to every single utterance, no exceptions.\n\n"
+                f"ENDING A HOTWORD CONVERSATION:\n"
+                f"When the user's request is fully resolved and they signal they are done "
+                f"(e.g. 'thanks', 'got it', 'okay', 'perfect', 'that's all', 'great'), "
+                f"call close_hotword_session, then give a brief closing remark and go silent. "
+                f"Do not keep the conversation going after the task is complete."
             )
-            functions = FUNCTION_DEFINITIONS + [CHECK_HOTWORD_DEFINITION]
+            functions = FUNCTION_DEFINITIONS + [CHECK_HOTWORD_DEFINITION, CLOSE_HOTWORD_SESSION_DEFINITION]
         else:
             functions = FUNCTION_DEFINITIONS
 

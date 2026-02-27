@@ -109,6 +109,10 @@ class AgentTemplates:
             greeting = cfg.get("greeting", "Hello, how can I help you today?")
             voice_model = cfg.get("voiceModel", voiceModel)
             config_language = cfg.get("language", language)
+            # Substitute {{agentName}} with the voice name derived from the model
+            agent_name = AgentTemplates._voice_name_from_model(voice_model or voiceModel)
+            system_prompt = system_prompt.replace("{{agentName}}", agent_name)
+            greeting = greeting.replace("{{agentName}}", agent_name)
         else:
             # No JSON config found — build defaults (legacy behavior for unknown ids)
             system_prompt = PROMPT_TEMPLATE.format(

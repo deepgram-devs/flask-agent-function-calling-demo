@@ -673,12 +673,14 @@ def get_tts_models():
 
 
 voice_agent = None
+voice_agent_thread = None
 
 
 def run_async_voice_agent():
     try:
-        # Create a new event loop for this thread
-        loop = asyncio.new_event_loop()
+        # Use the default (non-eventlet-patched) policy to get a clean asyncio loop,
+        # avoiding "event loop already running" conflicts with the eventlet hub.
+        loop = asyncio.DefaultEventLoopPolicy().new_event_loop()
         asyncio.set_event_loop(loop)
 
         # Set the loop in the voice agent

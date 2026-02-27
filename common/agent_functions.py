@@ -1,5 +1,6 @@
 import json
 import re
+import time
 from datetime import datetime, timedelta
 import asyncio
 from .business_logic import (
@@ -277,28 +278,46 @@ FUNCTION_DEFINITIONS = [
 # ---------------------------------------------------------------------------
 
 _current_hotword: str | None = None
+_conversation_active: bool = False
+_last_activity_time: float = 0.0
+CONVERSATION_TIMEOUT = 30.0  # seconds of inactivity before returning to hotword-only mode
 
 
 def set_hotword(hotword: str | None):
-    global _current_hotword
+    global _current_hotword, _conversation_active, _last_activity_time
     _current_hotword = hotword.lower() if hotword else None
+    _conversation_active = False
+    _last_activity_time = 0.0
 
 
 async def check_hotword(params):
+    global _conversation_active, _last_activity_time
     transcript = params.get("transcript", "")
     hotword = _current_hotword
+    now = time.time()
 
     if not hotword:
         return {"active": True, "query": transcript}
 
-    # Build a regex that tolerates punctuation between hotword words
-    # e.g. "hey saga" matches "Hey, Saga." or "Hey Saga!" or "hey   saga"
-    words = hotword.lower().split()
+    # If we're in an active conversation and within the inactivity timeout,
+    # pass through without requiring the hotword again
+    if _conversation_active:
+        if now - _last_activity_time < CONVERSATION_TIMEOUT:
+            _last_activity_time = now
+            return {"active": True, "query": transcript}
+        else:
+            # Inactivity timeout elapsed — reset to hotword-only mode
+            _conversation_active = False
+
+    # Check for hotword (tolerates punctuation between words e.g. "Hey, Saga.")
+    words = hotword.split()
     pattern = r'\b' + r'[\s,\.!?\'\"]*'.join(re.escape(w) for w in words) + r'\b'
     match = re.search(pattern, transcript, re.IGNORECASE)
 
     if match:
         query = transcript[match.end():].strip().lstrip('.,!? ')
+        _conversation_active = True
+        _last_activity_time = now
         return {
             "active": True,
             "query": query or transcript,

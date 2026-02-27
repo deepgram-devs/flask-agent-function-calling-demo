@@ -217,6 +217,8 @@
       const res = await fetch('/configs');
       const configs = await res.json();
       renderConfigCards(configs);
+      // Auto-select first config (backend returns default first)
+      if (configs.length && !selectedConfig) selectConfig(configs[0]);
     }
 
     function renderConfigCards(configs) {
@@ -279,7 +281,10 @@
         document.getElementById('builder-personality').value = existingConfig.personality || '';
         document.getElementById('builder-system-prompt').value = existingConfig.systemPrompt || '';
         document.getElementById('builder-greeting').value = existingConfig.greeting || '';
-        document.getElementById('builder-language').value = existingConfig.language || 'en-US';
+        // Set language first, repopulate voices for that language, then set voice
+        const lang = existingConfig.language || 'en';
+        document.getElementById('builder-language').value = lang;
+        populateVoiceSelect(document.getElementById('builder-voice-model'), lang);
         document.getElementById('builder-voice-model').value = existingConfig.voiceModel || '';
         document.getElementById('builder-hotword').value = existingConfig.hotword || '';
         document.getElementById('builder-mode').value = existingConfig.mode || 'voice_agent';
@@ -352,18 +357,24 @@
           if (data.error) { console.error('Error loading TTS models:', data.error); return; }
           allTTSModels = (data.models || []).filter(m => m.name);
 
-          // Build language dropdown from model list
+          // Build language dropdowns (main + builder) from model list
+          const langNames = { en:'English', es:'Spanish', fr:'French', de:'German', hi:'Hindi', ja:'Japanese', ko:'Korean', pt:'Portuguese', it:'Italian', nl:'Dutch', pl:'Polish', ru:'Russian', zh:'Chinese', ar:'Arabic', tl:'Tagalog' };
           const langSet = new Set(allTTSModels.map(m => m.language || 'en'));
-          const langSelect = document.getElementById('language-select');
-          langSelect.innerHTML = '';
-          Array.from(langSet).sort().forEach(lang => {
-            const opt = document.createElement('option');
-            opt.value = lang;
-            opt.textContent = lang;
-            langSelect.appendChild(opt);
+
+          [document.getElementById('language-select'), document.getElementById('builder-language')].forEach(sel => {
+            const prev = sel.value;
+            sel.innerHTML = '';
+            Array.from(langSet).sort().forEach(lang => {
+              const opt = document.createElement('option');
+              opt.value = lang;
+              opt.textContent = (langNames[lang] || lang) + ' (' + lang + ')';
+              sel.appendChild(opt);
+            });
+            if (prev && langSet.has(prev)) sel.value = prev;
           });
 
           // Set default language and populate voice models
+          const langSelect = document.getElementById('language-select');
           if (langSet.has(currentLanguage)) {
             langSelect.value = currentLanguage;
           } else if (langSelect.options.length) {
@@ -388,6 +399,10 @@
     document.getElementById('language-select').addEventListener('change', function() {
       currentLanguage = this.value;
       populateVoiceSelect(document.getElementById('voice-model-select'), currentLanguage);
+    });
+
+    document.getElementById('builder-language').addEventListener('change', function() {
+      populateVoiceSelect(document.getElementById('builder-voice-model'), this.value);
     });
 
     document.getElementById('voice-model-select').addEventListener('change', function() {

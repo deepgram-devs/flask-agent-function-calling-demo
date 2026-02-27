@@ -716,9 +716,11 @@ def run_async_voice_agent():
 
 @socketio.on("start_voice_agent")
 def handle_start_voice_agent(data=None):
-    global voice_agent
+    global voice_agent, voice_agent_thread
     logger.info(f"Starting voice agent with data: {data}")
     if voice_agent is None:
+        if voice_agent_thread and voice_agent_thread.is_alive():
+            voice_agent_thread.join(timeout=2.0)
         # Accept config_id (new) or industry (legacy) — config_id takes precedence
         config_id = data.get("config_id") or data.get("industry", "deepgram") if data else "deepgram"
 
@@ -754,7 +756,9 @@ def handle_start_voice_agent(data=None):
             voice_agent.input_device_id = data.get("inputDeviceId")
             voice_agent.output_device_id = data.get("outputDeviceId")
         # Start the voice agent in a native OS thread to isolate asyncio from eventlet
-        threading.Thread(target=run_async_voice_agent, daemon=True).start()
+        t = threading.Thread(target=run_async_voice_agent, daemon=True)
+        voice_agent_thread = t
+        t.start()
 
 
 @socketio.on("stop_voice_agent")
@@ -764,9 +768,12 @@ def handle_stop_voice_agent():
         voice_agent.is_running = False
         if voice_agent.loop and not voice_agent.loop.is_closed():
             try:
-                # Cancel all running tasks
+                if voice_agent.ws and not voice_agent.ws.closed:
+                    asyncio.run_coroutine_threadsafe(
+                        voice_agent.ws.close(), voice_agent.loop
+                    )
                 for task in asyncio.all_tasks(voice_agent.loop):
-                    task.cancel()
+                    voice_agent.loop.call_soon_threadsafe(task.cancel)
             except Exception as e:
                 logger.error(f"Error stopping voice agent: {e}")
         voice_agent = None

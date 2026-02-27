@@ -22,7 +22,7 @@ from common.log_formatter import CustomFormatter
 
 # Configure Flask and SocketIO
 app = Flask(__name__, static_folder="./static", static_url_path="/")
-socketio = SocketIO(app)
+socketio = SocketIO(app, cors_allowed_origins="*", allow_upgrades=False)
 
 # Configure logging
 logger = logging.getLogger(__name__)

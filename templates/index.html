@@ -189,7 +189,7 @@
 
   <script>
     // ── SocketIO setup ─────────────────────────────────────
-    const socket = io();
+    const socket = io({ transports: ['websocket'] });
 
     // ── DOM refs ──────────────────────────────────────────
     const startBtn = document.getElementById('start-btn');

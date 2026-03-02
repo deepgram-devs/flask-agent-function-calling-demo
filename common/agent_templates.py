@@ -197,11 +197,14 @@ class AgentTemplates:
     def load_all() -> list:
         """Return all config dicts from configs/*.json.
         Configs with 'default: true' sort first; otherwise alphabetical by id.
+        Configs with 'disabled: true' are excluded.
         """
         configs = []
         for f in sorted(CONFIGS_DIR.glob("*.json")):
             with open(f) as fh:
-                configs.append(json.load(fh))
+                cfg = json.load(fh)
+            if not cfg.get("disabled"):
+                configs.append(cfg)
         configs.sort(key=lambda c: (0 if c.get("default") else 1, c.get("id", "")))
         return configs
 

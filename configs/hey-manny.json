@@ -14,5 +14,6 @@
   ],
   "hotword": "Hey Manny",
   "mode": "phone_ui",
+  "disabled": true,
   "greeting": "Mabuhay! Thank you for calling, champion! This is {{agentName}} -- how can I fight for you today?"
 }

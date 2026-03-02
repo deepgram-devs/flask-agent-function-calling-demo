@@ -164,20 +164,26 @@ class AgentTemplates:
         if config_language != "en":
             listen_provider["language"] = config_language
 
-        # Build speak provider (ElevenLabs or Deepgram)
+        # Build speak block (ElevenLabs or Deepgram)
         el_api_key = os.environ.get("ELEVENLABS_API_KEY", "")
         tts_provider_cfg = cfg.get("ttsProvider", "deepgram") if cfg else "deepgram"
         if tts_provider_cfg == "eleven_labs" and el_api_key:
-            speak_provider = {
+            voice_id = cfg.get("elevenLabsVoiceId", "")
+            el_provider = {
                 "type": "eleven_labs",
-                "voice_id": cfg.get("elevenLabsVoiceId", ""),
                 "model_id": cfg.get("elevenLabsModel", "eleven_turbo_v2_5"),
-                "api_key": el_api_key,
             }
             if config_language != "en":
-                speak_provider["language_code"] = config_language
+                el_provider["language_code"] = config_language
+            speak_block = {
+                "provider": el_provider,
+                "endpoint": {
+                    "url": f"wss://api.elevenlabs.io/v1/text-to-speech/{voice_id}/stream-input",
+                    "headers": {"xi-api-key": el_api_key},
+                },
+            }
         else:
-            speak_provider = {"type": "deepgram", "model": voice_model}
+            speak_block = {"provider": {"type": "deepgram", "model": voice_model}}
 
         self.settings = {
             "type": "Settings",
@@ -196,9 +202,7 @@ class AgentTemplates:
                     "prompt": system_prompt,
                     "functions": functions,
                 },
-                "speak": {
-                    "provider": speak_provider
-                },
+                "speak": speak_block,
                 "greeting": greeting,
             },
         }

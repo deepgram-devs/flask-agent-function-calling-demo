@@ -44,8 +44,8 @@
 
         <hr style="border-color: var(--dg-color-border); margin: 1.5rem 0;">
 
-        <!-- Voice / Language selects -->
-        <div class="dg-form-field">
+        <!-- Voice / Language selects (hidden — set automatically from config) -->
+        <div class="dg-form-field" style="display: none;">
           <label class="dg-form-field__label">Language</label>
           <select class="dg-select" id="language-select">
             <option value="en-US">English (US)</option>
@@ -55,7 +55,7 @@
           </select>
         </div>
 
-        <div class="dg-form-field" style="margin-top: 0.75rem;">
+        <div class="dg-form-field" style="display: none; margin-top: 0.75rem;">
           <label class="dg-form-field__label">Voice Model</label>
           <select class="dg-select" id="voice-model-select">
             <!-- Populated from /tts-models -->
@@ -115,6 +115,7 @@
 
     <form id="builder-form">
       <input type="hidden" id="builder-id" name="id">
+      <input type="hidden" id="builder-default" name="default" value="">
 
       <div class="dg-form-field">
         <label class="dg-form-field__label">Demo Name *</label>
@@ -163,13 +164,7 @@
         <input class="dg-input" type="text" id="builder-hotword" name="hotword" placeholder="e.g. Hey Saga">
       </div>
 
-      <div class="dg-form-field">
-        <label class="dg-form-field__label">Mode</label>
-        <select class="dg-select" id="builder-mode" name="mode">
-          <option value="voice_agent">Voice Agent</option>
-          <option value="agent_assist">Agent Assist</option>
-        </select>
-      </div>
+      <input type="hidden" id="builder-mode" name="mode" value="voice_agent">
 
       <div class="dg-form-field">
         <label class="dg-form-field__label" style="margin-bottom: 0.5rem;">Functions</label>
@@ -217,8 +212,13 @@
       const res = await fetch('/configs');
       const configs = await res.json();
       renderConfigCards(configs);
-      // Auto-select first config (backend returns default first)
-      if (configs.length && !selectedConfig) selectConfig(configs[0]);
+      if (selectedConfig) {
+        // Re-select with fresh data so currentVoiceModel/voiceName stay in sync
+        const updated = configs.find(c => c.id === selectedConfig.id);
+        if (updated) selectConfig(updated);
+      } else if (configs.length) {
+        selectConfig(configs[0]);
+      }
     }
 
     function renderConfigCards(configs) {
@@ -237,6 +237,7 @@
             <div>
               <div style="font-weight: 600;">${cfg.name}</div>
               <div style="font-size: 0.8rem; color: var(--dg-color-text-muted);">${cfg.company || ''} &middot; ${cfg.language || ''}</div>
+              <div style="font-size: 0.75rem; color: var(--dg-color-text-muted); margin-top: 0.15rem;">${cfg.ttsProvider === 'eleven_labs' ? 'ElevenLabs &middot; ' + (cfg.elevenLabsModel || 'eleven_turbo_v2_5') : (n => n.charAt(0).toUpperCase() + n.slice(1))(cfg.voiceName || (cfg.voiceModel || '').replace('aura-2-','').replace('aura-','').split('-')[0]) }</div>
             </div>
             <button class="dg-btn dg-btn--ghost dg-btn--xs edit-config-btn" data-config-id="${cfg.id}" title="Edit">
               <i class="fa fa-edit"></i>
@@ -264,6 +265,8 @@
       // Update current values for session start
       if (cfg.language) currentLanguage = cfg.language;
       if (cfg.voiceModel) currentVoiceModel = cfg.voiceModel;
+      const derivedName = (cfg.voiceModel || '').replace('aura-2-','').replace('aura-','').split('-')[0];
+      currentVoiceName = cfg.voiceName || (derivedName.charAt(0).toUpperCase() + derivedName.slice(1));
     }
 
     // ── Builder panel ─────────────────────────────────────
@@ -276,6 +279,7 @@
       if (existingConfig) {
         title.textContent = 'Edit Demo';
         document.getElementById('builder-id').value = existingConfig.id || '';
+        document.getElementById('builder-default').value = existingConfig.default ? 'true' : '';
         document.getElementById('builder-name').value = existingConfig.name || '';
         document.getElementById('builder-company').value = existingConfig.company || '';
         document.getElementById('builder-personality').value = existingConfig.personality || '';

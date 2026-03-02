@@ -159,16 +159,33 @@ class AgentTemplates:
         else:
             functions = FUNCTION_DEFINITIONS
 
+        # Build listen provider (add language for non-English STT)
+        listen_provider = {"type": "deepgram", "model": "nova-3"}
+        if config_language != "en":
+            listen_provider["language"] = config_language
+
+        # Build speak provider (ElevenLabs or Deepgram)
+        el_api_key = os.environ.get("ELEVENLABS_API_KEY", "")
+        tts_provider_cfg = cfg.get("ttsProvider", "deepgram") if cfg else "deepgram"
+        if tts_provider_cfg == "eleven_labs" and el_api_key:
+            speak_provider = {
+                "type": "eleven_labs",
+                "voice_id": cfg.get("elevenLabsVoiceId", ""),
+                "model_id": cfg.get("elevenLabsModel", "eleven_turbo_v2_5"),
+                "api_key": el_api_key,
+            }
+            if config_language != "en":
+                speak_provider["language_code"] = config_language
+        else:
+            speak_provider = {"type": "deepgram", "model": voice_model}
+
         self.settings = {
             "type": "Settings",
             "audio": AUDIO_SETTINGS,
             "agent": {
                 "language": config_language,
                 "listen": {
-                    "provider": {
-                        "type": "deepgram",
-                        "model": "nova-3",
-                    }
+                    "provider": listen_provider
                 },
                 "think": {
                     "provider": {
@@ -180,10 +197,7 @@ class AgentTemplates:
                     "functions": functions,
                 },
                 "speak": {
-                    "provider": {
-                        "type": "deepgram",
-                        "model": voice_model,
-                    }
+                    "provider": speak_provider
                 },
                 "greeting": greeting,
             },

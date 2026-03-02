@@ -173,8 +173,6 @@ class AgentTemplates:
                 "type": "eleven_labs",
                 "model_id": cfg.get("elevenLabsModel", "eleven_turbo_v2_5"),
             }
-            if config_language != "en":
-                el_provider["language_code"] = config_language
             speak_block = {
                 "provider": el_provider,
                 "endpoint": {

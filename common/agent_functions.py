@@ -1,4 +1,6 @@
 import json
+import re
+import time
 from datetime import datetime, timedelta
 import asyncio
 from .business_logic import (
@@ -271,6 +273,100 @@ FUNCTION_DEFINITIONS = [
     },
 ]
 
+# ---------------------------------------------------------------------------
+# Hotword detection
+# ---------------------------------------------------------------------------
+
+_current_hotword: str | None = None
+_conversation_active: bool = False
+_last_activity_time: float = 0.0
+CONVERSATION_TIMEOUT = 30.0  # seconds of inactivity before returning to hotword-only mode
+
+
+def set_hotword(hotword: str | None):
+    global _current_hotword, _conversation_active, _last_activity_time
+    _current_hotword = hotword.lower() if hotword else None
+    _conversation_active = False
+    _last_activity_time = 0.0
+
+
+async def close_hotword_session(params):
+    global _conversation_active
+    _conversation_active = False
+    return {"status": "closed"}
+
+
+async def check_hotword(params):
+    global _conversation_active, _last_activity_time
+    transcript = params.get("transcript", "")
+    hotword = _current_hotword
+    now = time.time()
+
+    if not hotword:
+        return {"active": True, "query": transcript}
+
+    # If we're in an active conversation and within the inactivity timeout,
+    # pass through without requiring the hotword again
+    if _conversation_active:
+        if now - _last_activity_time < CONVERSATION_TIMEOUT:
+            _last_activity_time = now
+            return {"active": True, "query": transcript}
+        else:
+            # Inactivity timeout elapsed — reset to hotword-only mode
+            _conversation_active = False
+
+    # Check for hotword (tolerates punctuation between words e.g. "Hey, Saga.")
+    words = hotword.split()
+    pattern = r'\b' + r'[\s,\.!?\'\"]*'.join(re.escape(w) for w in words) + r'\b'
+    match = re.search(pattern, transcript, re.IGNORECASE)
+
+    if match:
+        query = transcript[match.end():].strip().lstrip('.,!? ')
+        _conversation_active = True
+        _last_activity_time = now
+        return {
+            "active": True,
+            "query": query or transcript,
+        }
+    else:
+        return {
+            "active": False,
+            "instruction": "Hotword not detected. Do not speak. Stay silent.",
+        }
+
+
+CLOSE_HOTWORD_SESSION_DEFINITION = {
+    "name": "close_hotword_session",
+    "description": (
+        "Call this function when the conversation triggered by the hotword is complete. "
+        "Triggers when the user's question is fully answered and they indicate satisfaction "
+        "(e.g. 'thanks', 'got it', 'okay', 'that's all', 'perfect', 'great'). "
+        "After calling this, return to silent listening mode — do not speak further unless the hotword is said again."
+    ),
+    "parameters": {"type": "object", "properties": {}},
+}
+
+CHECK_HOTWORD_DEFINITION = {
+    "name": "check_hotword",
+    "description": (
+        "MANDATORY: Call this function before responding to ANY user input. "
+        "Pass ONLY the most recent utterance — not the full conversation history. "
+        "If the result has active=false, do not speak at all — stay completely silent. "
+        "If the result has active=true, respond naturally to the 'query' field only."
+    ),
+    "parameters": {
+        "type": "object",
+        "properties": {
+            "transcript": {
+                "type": "string",
+                "description": "The most recent thing the user just said (current utterance only, not history).",
+            }
+        },
+        "required": ["transcript"],
+    },
+}
+
+
 # Map function names to their implementations
 FUNCTION_MAP = {
     "find_customer": find_customer,
@@ -280,4 +376,6 @@ FUNCTION_MAP = {
     "check_availability": check_availability,
     "agent_filler": agent_filler,
     "end_call": end_call,
+    "check_hotword": check_hotword,
+    "close_hotword_session": close_hotword_session,
 }

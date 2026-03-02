@@ -1,36 +1,19 @@
-from common.agent_functions import FUNCTION_DEFINITIONS
-from common.prompt_templates import DEEPGRAM_PROMPT_TEMPLATE, PROMPT_TEMPLATE
-from datetime import datetime
+import json
 import os
 import glob
+from pathlib import Path
+from common.agent_functions import FUNCTION_DEFINITIONS, CHECK_HOTWORD_DEFINITION, CLOSE_HOTWORD_SESSION_DEFINITION, set_hotword
+from common.prompt_templates import DEEPGRAM_PROMPT_TEMPLATE, PROMPT_TEMPLATE
+from datetime import datetime
 
 
-# Function to read documentation files from the deepgram-docs/fern/docs directory
-def read_documentation_files(docs_dir):
-    """Read all .mdx files in the specified directory and return their contents as a dictionary."""
-    documentation = {}
-    if not os.path.exists(docs_dir):
-        return documentation
-
-    # Get all .mdx files in the directory
-    mdx_files = glob.glob(os.path.join(docs_dir, "*.mdx"))
-
-    for file_path in mdx_files:
-        try:
-            with open(file_path, "r", encoding="utf-8") as file:
-                content = file.read()
-                # Use the filename without extension as the key
-                key = os.path.basename(file_path).replace(".mdx", "")
-                documentation[key] = content
-        except Exception as e:
-            print(f"Error reading {file_path}: {e}")
-
-    return documentation
-
+# ---------------------------------------------------------------------------
+# Module-level constants (preserved for backward compat — client.py imports
+# AGENT_AUDIO_SAMPLE_RATE directly from this module)
+# ---------------------------------------------------------------------------
 
 VOICE = "aura-2-thalia-en"
 
-# audio settings
 USER_AUDIO_SAMPLE_RATE = 16000
 USER_AUDIO_SECS_PER_CHUNK = 0.05
 USER_AUDIO_SAMPLES_PER_CHUNK = round(USER_AUDIO_SAMPLE_RATE * USER_AUDIO_SECS_PER_CHUNK)
@@ -52,125 +35,53 @@ AUDIO_SETTINGS = {
     },
 }
 
-LISTEN_SETTINGS = {
-    "provider": {
-        "type": "deepgram",
-        "model": "nova-3",
-    }
-}
+# ---------------------------------------------------------------------------
+# JSON config directory
+# ---------------------------------------------------------------------------
 
-THINK_SETTINGS = {
-    "provider": {
-        "type": "open_ai",
-        "model": "gpt-4o-mini",
-        "temperature": 0.7,
-    },
-    "prompt": PROMPT_TEMPLATE.format(
-        current_date=datetime.now().strftime("%A, %B %d, %Y")
-    ),
-    "functions": FUNCTION_DEFINITIONS,
-}
+CONFIGS_DIR = Path(__file__).parent.parent / "configs"
 
-SPEAK_SETTINGS = {
-    "provider": {
-        "type": "deepgram",
-        "model": VOICE,
-    }
-}
 
-AGENT_SETTINGS = {
-    "language": "en",
-    "listen": LISTEN_SETTINGS,
-    "think": THINK_SETTINGS,
-    "speak": SPEAK_SETTINGS,
-    "greeting": "",
-}
+# ---------------------------------------------------------------------------
+# Helper — read Deepgram documentation files (kept for deepgram config compat)
+# ---------------------------------------------------------------------------
 
-SETTINGS = {"type": "Settings", "audio": AUDIO_SETTINGS, "agent": AGENT_SETTINGS}
+def read_documentation_files(docs_dir):
+    """Read all .mdx files in the specified directory and return their contents."""
+    documentation = {}
+    if not os.path.exists(docs_dir):
+        return documentation
+    mdx_files = glob.glob(os.path.join(docs_dir, "*.mdx"))
+    for file_path in mdx_files:
+        try:
+            with open(file_path, "r", encoding="utf-8") as f:
+                key = os.path.basename(file_path).replace(".mdx", "")
+                documentation[key] = f.read()
+        except Exception as e:
+            print(f"Error reading {file_path}: {e}")
+    return documentation
 
-# Translated welcome message templates: {voiceName}, {company}, {capabilities}
-# Languages supported: en (American, British, Australian, Irish, Filipino), es (Mexican, Peninsular, Colombian, Latin American), de, fr, nl, it, ja
-WELCOME_MESSAGES = {
-    "en": "Hello! I'm {voiceName} from {company} customer service. {capabilities} How can I help you today?",
-    "es": "¡Hola! Soy {voiceName} del servicio al cliente de {company}. {capabilities} ¿Cómo puedo ayudarte hoy?",
-    "de": "Hallo! Ich bin {voiceName} vom Kundenservice von {company}. {capabilities} Wie kann ich Ihnen heute helfen?",
-    "fr": "Bonjour ! Je suis {voiceName} du service client de {company}. {capabilities} Comment puis-je vous aider aujourd'hui ?",
-    "nl": "Hallo! Ik ben {voiceName} van de klantenservice van {company}. {capabilities} Hoe kan ik u vandaag helpen?",
-    "it": "Ciao! Sono {voiceName} del servizio clienti di {company}. {capabilities} Come posso aiutarti oggi?",
-    "ja": "こんにちは！{company}のカスタマーサービス担当の{voiceName}です。{capabilities}本日はどのようなご用件でしょうか？",
-}
 
-# Single capabilities template per language: "I can help you answer questions about {topic}."
-CAPABILITY_TEMPLATES = {
-    "en": "I can help you answer questions about {topic}.",
-    "es": "Puedo ayudarte a responder preguntas sobre {topic}.",
-    "de": "Ich kann Ihnen bei Fragen zu {topic} helfen.",
-    "fr": "Je peux vous aider à répondre à vos questions sur {topic}.",
-    "nl": "Ik kan u helpen met vragen over {topic}.",
-    "it": "Posso aiutarti a rispondere a domande su {topic}.",
-    "ja": "{topic}に関するご質問にお答えします。",
-}
-
-# Topic name per industry per language (plugged into CAPABILITY_TEMPLATES)
-CAPABILITY_TOPICS = {
-    "deepgram": {
-        "en": "Deepgram",
-        "es": "Deepgram",
-        "de": "Deepgram",
-        "fr": "Deepgram",
-        "nl": "Deepgram",
-        "it": "Deepgram",
-        "ja": "Deepgram",
-    },
-    "healthcare": {
-        "en": "healthcare",
-        "es": "atención médica",
-        "de": "Gesundheitsversorgung",
-        "fr": "soins de santé",
-        "nl": "gezondheidszorg",
-        "it": "assistenza sanitaria",
-        "ja": "ヘルスケア",
-    },
-    "banking": {
-        "en": "banking",
-        "es": "banca",
-        "de": "Bankwesen",
-        "fr": "banque",
-        "nl": "bankzaken",
-        "it": "banking",
-        "ja": "銀行業務",
-    },
-    "pharmaceuticals": {
-        "en": "pharmaceuticals",
-        "es": "productos farmacéuticos",
-        "de": "Arzneimittel",
-        "fr": "produits pharmaceutiques",
-        "nl": "farmaceutische producten",
-        "it": "prodotti farmaceutici",
-        "ja": "医薬品",
-    },
-    "retail": {
-        "en": "retail",
-        "es": "retail",
-        "de": "Einzelhandel",
-        "fr": "vente au détail",
-        "nl": "retail",
-        "it": "vendita al dettaglio",
-        "ja": "小売",
-    },
-    "travel": {
-        "en": "travel",
-        "es": "viajes",
-        "de": "Reisen",
-        "fr": "voyages",
-        "nl": "reizen",
-        "it": "viaggi",
-        "ja": "旅行",
-    },
-}
-
+# ---------------------------------------------------------------------------
+# AgentTemplates — JSON config loader + instance settings builder
+# ---------------------------------------------------------------------------
 
 class AgentTemplates:
+    """Loads demo configs from configs/*.json.
+
+    Instance usage (called by VoiceAgent):
+        templates = AgentTemplates(industry, voiceModel, voiceName, language)
+        templates.settings          -> dict to send as WS Settings message
+        templates.voice_agent_url   -> str
+        templates.user_audio_sample_rate / user_audio_samples_per_chunk
+
+    Static CRUD usage (called by Flask routes):
+        AgentTemplates.load_all()       -> list[dict]
+        AgentTemplates.load(id)         -> dict | None
+        AgentTemplates.save(config)     -> dict
+        AgentTemplates.delete(id)       -> bool
+    """
+
     def __init__(
         self,
         industry="deepgram",
@@ -179,121 +90,226 @@ class AgentTemplates:
         language="en",
         docs_dir="deepgram-docs/fern/docs",
     ):
+        self.industry = industry
         self.voiceModel = voiceModel
-        if voiceName == "":
-            self.voiceName = self.get_voice_name_from_model(self.voiceModel)
-        else:
-            self.voiceName = voiceName
+        self.voiceName = voiceName if voiceName else self._voice_name_from_model(voiceModel)
         self.language = language
 
-        self.personality = ""
-        self.company = ""
-        self.first_message = ""
-        self.capabilities = ""
-
-        self.industry = industry
-
         self.voice_agent_url = VOICE_AGENT_URL
-        self.settings = SETTINGS
         self.user_audio_sample_rate = USER_AUDIO_SAMPLE_RATE
         self.user_audio_secs_per_chunk = USER_AUDIO_SECS_PER_CHUNK
         self.user_audio_samples_per_chunk = USER_AUDIO_SAMPLES_PER_CHUNK
         self.agent_audio_sample_rate = AGENT_AUDIO_SAMPLE_RATE
         self.agent_audio_bytes_per_sec = AGENT_AUDIO_BYTES_PER_SEC
 
-        match self.industry:
-            case "deepgram":
-                self.deepgram()
-
-                # Format documentation for the prompt
-                doc_text = ""
-                # Read documentation files
-                self.documentation = read_documentation_files(docs_dir)
-
-                if self.documentation:
-                    doc_text = "Available documentation topics: " + ", ".join(
-                        self.documentation.keys()
-                    )
-
-                self.prompt = DEEPGRAM_PROMPT_TEMPLATE.format(documentation=doc_text)
-            case "healthcare":
-                self.healthcare()
-            case "banking":
-                self.banking()
-            case "pharmaceuticals":
-                self.pharmaceuticals()
-            case "retail":
-                self.retail()
-            case "travel":
-                self.travel()
-
-        if self.industry != "deepgram":
-            # deepgram has its own specific prompt based on the product documentation
-            self.prompt = PROMPT_TEMPLATE.format(
+        # Try to load config from JSON; fall back to a sensible default
+        cfg = AgentTemplates.load(industry)
+        if cfg:
+            system_prompt = cfg.get("systemPrompt", "")
+            greeting = cfg.get("greeting", "Hello, how can I help you today?")
+            voice_model = cfg.get("voiceModel", voiceModel)
+            config_language = cfg.get("language", language)
+            hotword = cfg.get("hotword")
+            # Substitute {{agentName}} using the caller-passed voice name/model,
+            # not the config default (which would ignore the user's selection)
+            agent_name = voiceName if voiceName else AgentTemplates._voice_name_from_model(voiceModel)
+            system_prompt = system_prompt.replace("{{agentName}}", agent_name)
+            greeting = greeting.replace("{{agentName}}", agent_name)
+        else:
+            # No JSON config found — build defaults (legacy behavior for unknown ids)
+            system_prompt = PROMPT_TEMPLATE.format(
                 current_date=datetime.now().strftime("%A, %B %d, %Y")
             )
+            greeting = "Hello, how can I help you today?"
+            voice_model = voiceModel
+            config_language = language
+            hotword = None
 
-        # Use base language code (e.g. en from en-US) for welcome message and capabilities lookup
-        lang_base = (self.language or "en").split("-")[0].lower()
-        cap_template = CAPABILITY_TEMPLATES.get(lang_base) or CAPABILITY_TEMPLATES["en"]
-        topic = (
-            (CAPABILITY_TOPICS.get(self.industry) or {}).get(lang_base)
-            or (CAPABILITY_TOPICS.get(self.industry) or {}).get("en")
-            or self.industry
-        )
-        self.capabilities = cap_template.format(topic=topic)
+            # Special case: deepgram industry still uses doc-based prompt
+            if industry == "deepgram":
+                doc_text = ""
+                docs = read_documentation_files(docs_dir)
+                if docs:
+                    doc_text = "Available documentation topics: " + ", ".join(docs.keys())
+                system_prompt = DEEPGRAM_PROMPT_TEMPLATE.format(documentation=doc_text)
 
-        welcome_template = WELCOME_MESSAGES.get(lang_base, WELCOME_MESSAGES["en"])
-        self.first_message = welcome_template.format(
-            voiceName=self.voiceName,
-            company=self.company,
-            capabilities=self.capabilities,
-        )
+        # Override voice model and language if explicitly passed by caller
+        if voiceModel != "aura-2-thalia-en":
+            voice_model = voiceModel
+        if language != "en":
+            config_language = language
 
-        self.settings["agent"]["speak"]["provider"]["model"] = self.voiceModel
-        self.settings["agent"]["language"] = self.language
-        self.settings["agent"]["think"]["prompt"] = self.prompt
-        self.settings["agent"]["greeting"] = self.first_message
+        # Hotword mode: register the hotword and extend system prompt + functions
+        set_hotword(hotword)
+        if hotword:
+            system_prompt += (
+                f"\n\nHOTWORD ACTIVATION (CRITICAL RULE):\n"
+                f"You are in hotword mode. The activation hotword is \"{hotword}\".\n"
+                f"You MUST call check_hotword with the exact transcript before responding to ANYTHING the user says.\n"
+                f"- If check_hotword returns {{\"active\": false}}: Do not speak. Stay completely silent.\n"
+                f"- If check_hotword returns {{\"active\": true}}: Respond naturally to the \"query\" field.\n"
+                f"This rule applies to every single utterance, no exceptions.\n\n"
+                f"ENDING A HOTWORD CONVERSATION:\n"
+                f"When the user's request is fully resolved and they signal they are done "
+                f"(e.g. 'thanks', 'got it', 'okay', 'perfect', 'that's all', 'great'), "
+                f"call close_hotword_session, then give a brief closing remark and go silent. "
+                f"Do not keep the conversation going after the task is complete."
+            )
+            functions = FUNCTION_DEFINITIONS + [CHECK_HOTWORD_DEFINITION, CLOSE_HOTWORD_SESSION_DEFINITION]
+        else:
+            functions = FUNCTION_DEFINITIONS
 
-        self.prompt = self.personality + "\n\n" + self.prompt
+        # Build listen provider (add language for non-English STT)
+        listen_provider = {"type": "deepgram", "model": "nova-3"}
+        if config_language != "en":
+            listen_provider["language"] = config_language
 
-    def deepgram(self, company="Deepgram"):
-        self.company = company
-        self.personality = f"You are {self.voiceName}, a friendly and professional customer service representative for {self.company}, a Voice API company who provides STT and TTS capabilities via API. Your role is to assist potential customers with general inquiries about Deepgram."
+        # Build speak block (ElevenLabs or Deepgram)
+        el_api_key = os.environ.get("ELEVENLABS_API_KEY", "")
+        tts_provider_cfg = cfg.get("ttsProvider", "deepgram") if cfg else "deepgram"
+        if tts_provider_cfg == "eleven_labs" and el_api_key:
+            voice_id = cfg.get("elevenLabsVoiceId", "")
+            el_provider = {
+                "type": "eleven_labs",
+                "model_id": cfg.get("elevenLabsModel", "eleven_turbo_v2_5"),
+            }
+            speak_block = {
+                "provider": el_provider,
+                "endpoint": {
+                    "url": f"wss://api.elevenlabs.io/v1/text-to-speech/{voice_id}/multi-stream-input",
+                    "headers": {"xi-api-key": el_api_key},
+                },
+            }
+        else:
+            speak_block = {"provider": {"type": "deepgram", "model": voice_model}}
 
-    def healthcare(self, company="HealthFirst"):
-        self.company = company
-        self.personality = f"You are {self.voiceName}, a compassionate and knowledgeable healthcare assistant for {self.company}, a leading healthcare provider. Your role is to assist patients with general information about their appointments and orders."
+        self.settings = {
+            "type": "Settings",
+            "audio": AUDIO_SETTINGS,
+            "agent": {
+                "language": config_language,
+                "listen": {
+                    "provider": listen_provider
+                },
+                "think": {
+                    "provider": {
+                        "type": "open_ai",
+                        "model": "gpt-4o-mini",
+                        "temperature": 0.7,
+                    },
+                    "prompt": system_prompt,
+                    "functions": functions,
+                },
+                "speak": speak_block,
+                "greeting": greeting,
+            },
+        }
 
-    def banking(self, company="SecureBank"):
-        self.company = company
-        self.personality = f"You are {self.voiceName}, a professional and trustworthy banking representative for {self.company}, a secure financial institution. Your role is to assist customers with general information about their accounts and transactions."
+    # ------------------------------------------------------------------
+    # Static CRUD methods
+    # ------------------------------------------------------------------
 
-    def pharmaceuticals(self, company="MedLine"):
-        self.company = company
-        self.personality = f"You are {self.voiceName}, a professional and trustworthy pharmaceutical representative for {self.company}, a secure pharmaceutical company. Your role is to assist customers with general information about their prescriptions and orders."
+    @staticmethod
+    def load_all() -> list:
+        """Return all config dicts from configs/*.json.
+        Configs with 'default: true' sort first; otherwise alphabetical by id.
+        Configs with 'disabled: true' are excluded.
+        """
+        configs = []
+        for f in sorted(CONFIGS_DIR.glob("*.json")):
+            with open(f) as fh:
+                cfg = json.load(fh)
+            if not cfg.get("disabled"):
+                configs.append(cfg)
+        configs.sort(key=lambda c: (0 if c.get("default") else 1, c.get("id", "")))
+        return configs
 
-    def retail(self, company="StyleMart"):
-        self.company = company
-        self.personality = f"You are {self.voiceName}, a friendly and attentive retail associate for {self.company}, a trendy clothing and accessories store. Your role is to assist customers with general information about their orders and transactions."
+    @staticmethod
+    def load(config_id: str):
+        """Load a single config by id (matches filename stem)."""
+        path = CONFIGS_DIR / f"{config_id}.json"
+        if not path.exists():
+            return None
+        with open(path) as fh:
+            return json.load(fh)
 
-    def travel(self, company="TravelTech"):
-        self.company = company
-        self.personality = f"You are {self.voiceName}, a friendly and professional customer service representative for {self.company}, a tech-forward travel agency. Your role is to assist customers with general information about their travel plans and orders."
+    @staticmethod
+    def save(config: dict) -> dict:
+        """Write a config dict to configs/<id>.json."""
+        config_id = config["id"]
+        path = CONFIGS_DIR / f"{config_id}.json"
+        with open(path, "w") as fh:
+            json.dump(config, fh, indent=2)
+        return config
+
+    @staticmethod
+    def delete(config_id: str) -> bool:
+        """Delete configs/<id>.json. Returns True if deleted."""
+        path = CONFIGS_DIR / f"{config_id}.json"
+        if path.exists():
+            path.unlink()
+            return True
+        return False
+
+    # ------------------------------------------------------------------
+    # Backward-compat helpers (used by VoiceAgent or external callers)
+    # ------------------------------------------------------------------
+
+    @staticmethod
+    def get_system_prompt(config_id: str) -> str:
+        cfg = AgentTemplates.load(config_id)
+        if cfg:
+            return cfg.get("systemPrompt", "")
+        return ""
+
+    @staticmethod
+    def get_greeting(config_id: str) -> str:
+        cfg = AgentTemplates.load(config_id)
+        if cfg:
+            return cfg.get("greeting", "Hello, how can I help you?")
+        return "Hello, how can I help you?"
+
+    @staticmethod
+    def get_functions(config_id: str) -> list:
+        cfg = AgentTemplates.load(config_id)
+        if cfg:
+            return cfg.get("functions", [])
+        return []
 
     @staticmethod
     def get_available_industries():
-        """Return a dictionary of available industries with display names"""
-        return {
-            "deepgram": "Deepgram",
-            "healthcare": "Healthcare",
-            "banking": "Banking",
-            "pharmaceuticals": "Pharmaceuticals",
-            "retail": "Retail",
-            "travel": "Travel",
-        }
+        """Return a dict of available configs as id -> name.
 
-    def get_voice_name_from_model(self, model):
+        Merges any JSON configs with the legacy hardcoded list so the
+        /industries route keeps working during the Phase 2 transition.
+        """
+        # Start with JSON-loaded configs
+        result = {}
+        for cfg in AgentTemplates.load_all():
+            result[cfg["id"]] = cfg.get("name", cfg["id"])
+
+        # Fall back to legacy hardcoded list if no JSON configs exist yet
+        if not result:
+            result = {
+                "deepgram": "Deepgram",
+                "healthcare": "Healthcare",
+                "banking": "Banking",
+                "pharmaceuticals": "Pharmaceuticals",
+                "retail": "Retail",
+                "travel": "Travel",
+            }
+        return result
+
+    # ------------------------------------------------------------------
+    # Private helpers
+    # ------------------------------------------------------------------
+
+    @staticmethod
+    def _voice_name_from_model(model: str) -> str:
         return (
             model.replace("aura-2-", "").replace("aura-", "").split("-")[0].capitalize()
         )
+
+    # Keep old name as alias
+    def get_voice_name_from_model(self, model: str) -> str:
+        return self._voice_name_from_model(model)

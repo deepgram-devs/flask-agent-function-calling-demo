@@ -1,7 +1,11 @@
 {
   "permissions": {
     "allow": [
-      "Bash(git checkout:*)"
+      "Bash(git checkout:*)",
+      "Bash(flyctl version:*)",
+      "Bash(flyctl deploy:*)",
+      "Bash(fly auth login:*)",
+      "Bash(fly deploy:*)"
     ]
   }
 }

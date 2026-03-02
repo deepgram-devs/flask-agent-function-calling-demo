@@ -1,4 +1,4 @@
-from flask import Flask, render_template, jsonify
+from flask import Flask, render_template, jsonify, request
 from flask_socketio import SocketIO
 import pyaudio
 import asyncio
@@ -22,7 +22,7 @@ from common.log_formatter import CustomFormatter
 
 # Configure Flask and SocketIO
 app = Flask(__name__, static_folder="./static", static_url_path="/")
-socketio = SocketIO(app)
+socketio = SocketIO(app, cors_allowed_origins="*", allow_upgrades=False)
 
 # Configure logging
 logger = logging.getLogger(__name__)
@@ -585,8 +585,33 @@ def audio_devices():
 
 @app.route("/industries")
 def get_industries():
-    # Get available industries from AgentTemplates
+    # Return available industries — merges JSON configs with legacy fallback
     return AgentTemplates.get_available_industries()
+
+
+@app.route("/configs", methods=["GET"])
+def get_configs():
+    """Return all demo configs as JSON array."""
+    return jsonify(AgentTemplates.load_all())
+
+
+@app.route("/configs", methods=["POST"])
+def create_config():
+    """Create a new demo config. Body must include 'id' field."""
+    data = request.get_json()
+    if not data or "id" not in data:
+        return jsonify({"error": "id field required"}), 400
+    config = AgentTemplates.save(data)
+    return jsonify(config), 201
+
+
+@app.route("/configs/<config_id>", methods=["DELETE"])
+def delete_config(config_id):
+    """Delete a demo config by id."""
+    deleted = AgentTemplates.delete(config_id)
+    if deleted:
+        return jsonify({"deleted": config_id}), 200
+    return jsonify({"error": "not found"}), 404
 
 
 @app.route("/tts-models")
@@ -648,12 +673,14 @@ def get_tts_models():
 
 
 voice_agent = None
+voice_agent_thread = None
 
 
 def run_async_voice_agent():
     try:
-        # Create a new event loop for this thread
-        loop = asyncio.new_event_loop()
+        # Use the default (non-eventlet-patched) policy to get a clean asyncio loop,
+        # avoiding "event loop already running" conflicts with the eventlet hub.
+        loop = asyncio.DefaultEventLoopPolicy().new_event_loop()
         asyncio.set_event_loop(loop)
 
         # Set the loop in the voice agent
@@ -689,23 +716,37 @@ def run_async_voice_agent():
 
 @socketio.on("start_voice_agent")
 def handle_start_voice_agent(data=None):
-    global voice_agent
+    global voice_agent, voice_agent_thread
     logger.info(f"Starting voice agent with data: {data}")
     if voice_agent is None:
-        # Get industry from data or default to deepgram
-        industry = data.get("industry", "deepgram") if data else "deepgram"
+        if voice_agent_thread and voice_agent_thread.is_alive():
+            voice_agent_thread.join(timeout=2.0)
+        # Accept config_id (new) or industry (legacy) — config_id takes precedence
+        config_id = data.get("config_id") or data.get("industry", "deepgram") if data else "deepgram"
+
+        # Load full config from JSON if available, then allow per-call overrides
+        cfg = AgentTemplates.load(config_id)
+        if cfg:
+            default_voice_model = cfg.get("voiceModel", "aura-2-thalia-en")
+            default_voice_name = cfg.get("voiceName", "")
+            default_language = cfg.get("language", "en")
+        else:
+            default_voice_model = "aura-2-thalia-en"
+            default_voice_name = ""
+            default_language = "en"
+
         voiceModel = (
-            data.get("voiceModel", "aura-2-thalia-en") if data else "aura-2-thalia-en"
+            data.get("voiceModel", default_voice_model) if data else default_voice_model
         )
-        # Get voice name from data or default to empty string, which uses the Model's voice name in the backend
-        voiceName = data.get("voiceName", "") if data else ""
-        # Get language from data or default to en (used in agent config)
-        language = data.get("language", "en") if data else "en"
+        # Get voice name from data or derive from config/model
+        voiceName = data.get("voiceName", default_voice_name) if data else default_voice_name
+        # Get language from data or use config default
+        language = data.get("language", default_language) if data else default_language
         # Check if browser is handling audio capture
         browser_audio = data.get("browserAudio", False) if data else False
 
         voice_agent = VoiceAgent(
-            industry=industry,
+            industry=config_id,
             voiceModel=voiceModel,
             voiceName=voiceName,
             language=language,
@@ -715,7 +756,9 @@ def handle_start_voice_agent(data=None):
             voice_agent.input_device_id = data.get("inputDeviceId")
             voice_agent.output_device_id = data.get("outputDeviceId")
         # Start the voice agent in a native OS thread to isolate asyncio from eventlet
-        threading.Thread(target=run_async_voice_agent, daemon=True).start()
+        t = threading.Thread(target=run_async_voice_agent, daemon=True)
+        voice_agent_thread = t
+        t.start()
 
 
 @socketio.on("stop_voice_agent")
@@ -725,9 +768,12 @@ def handle_stop_voice_agent():
         voice_agent.is_running = False
         if voice_agent.loop and not voice_agent.loop.is_closed():
             try:
-                # Cancel all running tasks
+                if voice_agent.ws and not voice_agent.ws.closed:
+                    asyncio.run_coroutine_threadsafe(
+                        voice_agent.ws.close(), voice_agent.loop
+                    )
                 for task in asyncio.all_tasks(voice_agent.loop):
-                    task.cancel()
+                    voice_agent.loop.call_soon_threadsafe(task.cancel)
             except Exception as e:
                 logger.error(f"Error stopping voice agent: {e}")
         voice_agent = None

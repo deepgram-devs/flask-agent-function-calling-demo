@@ -172,12 +172,12 @@ class AgentTemplates:
             el_provider = {
                 "type": "eleven_labs",
                 "model_id": cfg.get("elevenLabsModel", "eleven_turbo_v2_5"),
+                "voice_id": voice_id,
             }
-            el_model = cfg.get("elevenLabsModel", "eleven_turbo_v2_5")
             speak_block = {
                 "provider": el_provider,
                 "endpoint": {
-                    "url": f"wss://api.elevenlabs.io/v1/text-to-speech/{voice_id}/stream-input?model_id={el_model}",
+                    "url": f"wss://api.elevenlabs.io/v1/text-to-speech/{voice_id}/stream-input",
                     "headers": {"xi-api-key": el_api_key},
                 },
             }

@@ -476,4 +476,10 @@ input {
         height: 70dvh;
         flex: none;
     }
+
+    /* Spacers line the conversation up with the logs side by side; stacked, they only
+       push the messages out of view (the script sets display inline, hence !important) */
+    .timeline-spacer {
+        display: none !important;
+    }
 }

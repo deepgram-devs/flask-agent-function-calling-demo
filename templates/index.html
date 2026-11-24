@@ -430,6 +430,8 @@ async function loadAudioDevices() {
         let mediaStream;
         let processor;
         let microphone;
+        let micAnalyser = null;    // feeds the voice ring while listening
+        let outputAnalyser = null; // feeds the voice ring while the agent speaks
         
         // Helpers: Float32 -> Int16 and resample to 16kHz
         function floatToInt16(float32) {
@@ -541,6 +543,9 @@ async function loadAudioDevices() {
                     
                     // Create microphone source
                     microphone = audioContext.createMediaStreamSource(mediaStream);
+                    micAnalyser = audioContext.createAnalyser();
+                    micAnalyser.fftSize = 1024;
+                    microphone.connect(micAnalyser);
                     console.log('Microphone source created');
                     
                     // Create script processor node for audio processing
@@ -607,6 +612,7 @@ async function loadAudioDevices() {
             if (microphone) {
                 microphone.disconnect();
                 microphone = null;
+                micAnalyser = null;
             }
             
             if (mediaStream) {
@@ -812,6 +818,8 @@ async function loadAudioDevices() {
                 // Create audio context if it doesn't exist
                 if (!audioOutputContext) {
                     audioOutputContext = new (window.AudioContext || window.webkitAudioContext)();
+                    outputAnalyser = audioOutputContext.createAnalyser();
+                    outputAnalyser.fftSize = 1024;
                     // Initialize nextPlayTime to current audio context time
                     nextPlayTime = audioOutputContext.currentTime;
                 }
@@ -859,6 +867,7 @@ async function loadAudioDevices() {
                 // Connect the nodes
                 source.connect(gainNode);
                 gainNode.connect(audioOutputContext.destination);
+                if (outputAnalyser) gainNode.connect(outputAnalyser);
                 
                 // Calculate when this chunk should start playing
                 const currentTime = audioOutputContext.currentTime;
@@ -897,6 +906,7 @@ async function loadAudioDevices() {
             
             // Reset variables
             audioOutputSampleRate = 16000;
+            outputAnalyser = null;
         }
 
         socket.on('audio_output', (data) => {
@@ -1044,6 +1054,29 @@ async function loadAudioDevices() {
                 card.addEventListener('click', () => toggleCustomer(card));
             });
         });
+        // Voice ring (<deepgram-voice-ring>, static/vdui): "speaking" while agent audio is
+        // scheduled, "listening" otherwise; level is the RMS of the matching analyser, 0..1.
+        const ring = document.getElementById('ring');
+        const ringSamples = new Uint8Array(1024);
+        let ringState = ring ? ring.getAttribute('state') : null;
+        function analyserLevel(analyser) {
+            if (!analyser) return 0;
+            analyser.getByteTimeDomainData(ringSamples);
+            let sum = 0;
+            for (const v of ringSamples) sum += ((v - 128) / 128) ** 2;
+            return Math.min(1, Math.sqrt(sum / ringSamples.length) * 4);
+        }
+        function tickRing() {
+            const speaking = isActive && !!audioOutputContext && nextPlayTime > audioOutputContext.currentTime;
+            const state = speaking ? 'speaking' : 'listening';
+            if (state !== ringState) {
+                ring.setAttribute('state', state);
+                ringState = state;
+            }
+            ring.level = speaking ? analyserLevel(outputAnalyser) : (isActive ? analyserLevel(micAnalyser) : 0);
+            requestAnimationFrame(tickRing);
+        }
+        if (ring) tickRing();
     </script>
 </body>
 </html>

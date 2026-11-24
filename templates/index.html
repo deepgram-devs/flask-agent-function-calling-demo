@@ -1,64 +1,76 @@
 <!DOCTYPE html>
-<html>
+<html lang="en" data-theme="dark">
     <head>
         <meta charset="utf-8">
-        <title>Voice Agent Debugger</title>
+        <meta name="viewport" content="width=device-width, initial-scale=1">
+        <title>Voice agent debugger</title>
+        <link rel="icon" type="image/svg+xml" href="{{ url_for('static', filename='vdui/logos/deepgram-favicon.svg') }}">
         <script src="https://cdnjs.cloudflare.com/ajax/libs/socket.io/4.0.1/socket.io.js"></script>
+        <link rel="stylesheet" href="{{ url_for('static', filename='vdui/brand.css') }}">
         <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
+        <script src="{{ url_for('static', filename='vdui/ring-element/deepgram-voice-ring.js') }}"></script>
     </head>
 <body>
     <!-- Industry Selection Popup -->
     <div id="industryPopup" class="popup-overlay">
-        <div class="popup-content">
-            <h3>Select Agent Industry</h3>
+        <div class="popup-content card" role="dialog" aria-modal="true" aria-labelledby="industryPopupTitle">
+            <h3 id="industryPopupTitle">Select agent industry</h3>
             <div id="industryList" class="industry-list"></div>
             <div class="popup-buttons">
-                <button id="cancelIndustry" class="popup-button">Cancel</button>
+                <button id="cancelIndustry" class="popup-button label">Cancel</button>
             </div>
         </div>
     </div>
-    
+
     <div class="main-container">
-        <div class="sidebar">
-            <button id="startButton" class="mic-button">Start Voice Agent</button>
-            <div id="currentIndustryDisplay" class="current-industry">Industry: <span>Tech Support</span></div>
-            <button id="industryButton" class="industry-button">Change Industry</button>
-            <div id="status" class="status">Microphone: Not active</div>
-            <div class="audio-controls">
+        <aside class="sidebar stage-glow">
+            <header class="brand">
+                <img class="brand-logo" src="{{ url_for('static', filename='vdui/logos/deepgram.svg') }}" alt="Deepgram">
+                <p class="label brand-kicker">Voice agent debugger</p>
+            </header>
+            <deepgram-voice-ring id="ring" class="ring" state="listening" aria-hidden="true"></deepgram-voice-ring>
+            <button id="startButton" class="mic-button label">Start voice agent</button>
+            <div id="status" class="status" role="status" aria-live="polite">Microphone: Not active</div>
+            <section class="side-panel glass industry-panel">
+                <p class="label side-label">Industry</p>
+                <div id="currentIndustryDisplay" class="current-industry"><span>Deepgram</span></div>
+                <button id="industryButton" class="industry-button label">Change industry</button>
+            </section>
+            <section class="side-panel glass audio-controls">
                 <div class="device-select">
-                    <label for="languageSelect">Language:</label>
+                    <label for="languageSelect" class="label">Language</label>
                     <select id="languageSelect"></select>
                 </div>
                 <div class="device-select">
-                    <label for="voiceModel">Voice Model:</label>
+                    <label for="voiceModel" class="label">Voice model</label>
                     <select id="voiceModel"></select>
                 </div>
                 <div class="device-select">
-                    <label for="inputDevice">Input Device:</label>
+                    <label for="inputDevice" class="label">Input device</label>
                     <select id="inputDevice"></select>
                 </div>
-            </div>
-            <div class="controls">
-                <label class="toggle">
-                    <input type="checkbox" id="showLogs">
-                    <span class="toggle-label">Show Logs</span>
-                </label>
-                <label class="toggle">
-                    <input type="checkbox" id="darkMode" checked>
-                    <span class="toggle-label">Dark Mode</span>
-                </label>
-            </div>
-            <div class="sample-data">
-                <h3>Sample Customer Data</h3>
+                <div class="controls">
+                    <label class="toggle">
+                        <input type="checkbox" id="showLogs">
+                        <span class="toggle-label">Show logs</span>
+                    </label>
+                    <label class="toggle">
+                        <input type="checkbox" id="darkMode" checked>
+                        <span class="toggle-label">Dark mode</span>
+                    </label>
+                </div>
+            </section>
+            <section class="side-panel glass sample-data">
+                <h3 class="label side-label">Sample customer data</h3>
                 <div class="sample-data-content">
                     {% for customer in sample_data %}
                     <div class="customer-card collapsed">
                         <div class="customer-header">
                             <div class="customer-info">
                                 <div><strong>{{ customer.Customer }}</strong></div>
-                                <div>ID: {{ customer.ID }}</div>
+                                <div class="customer-id">ID: {{ customer.ID }}</div>
                             </div>
-                            <div class="expand-icon">▼</div>
+                            <div class="expand-icon" aria-hidden="true">▼</div>
                         </div>
                         <div class="customer-details">
                             <div class="customer-contact">
@@ -89,18 +101,18 @@
                     </div>
                     {% endfor %}
                 </div>
-            </div>
-        </div>
-        <div class="columns-container">
-            <div id="conversation" class="timeline column">
-                <h2>Conversation</h2>
+            </section>
+        </aside>
+        <main class="columns-container">
+            <section id="conversation" class="timeline column card">
+                <h2 class="label">Conversation</h2>
                 <div id="conversationMessages"></div>
-            </div>
-            <div id="logs" class="timeline column">
-                <h2>Logs</h2>
+            </section>
+            <section id="logs" class="timeline column card">
+                <h2 class="label">Logs</h2>
                 <div id="logMessages"></div>
-            </div>
-        </div>
+            </section>
+        </main>
     </div>
 
     <script>
@@ -328,14 +340,14 @@ async function loadAudioDevices() {
             // If agent is active, stop it and restart with new industry
             if (isActive) {
                 socket.emit('stop_voice_agent');
-                startButton.textContent = 'Start Voice Agent';
+                startButton.textContent = 'Start voice agent';
                 statusDiv.textContent = 'Microphone: Not active';
                 isActive = false;
                 
                 // Add message about industry change
                 addConversationMessage({
                     role: 'system',
-                    content: `Industry changed to ${name}. Click Start Voice Agent to continue.`
+                    content: `Industry changed to ${name}. Select Start voice agent to continue.`
                 });
             }
         }
@@ -395,7 +407,7 @@ async function loadAudioDevices() {
                         browserAudio: true // Flag to indicate browser is handling audio
                     });
                     
-                    startButton.textContent = 'Stop Voice Agent';
+                    startButton.textContent = 'Stop voice agent';
                     statusDiv.textContent = 'Microphone: Active';
                     isActive = true;
                 } catch (err) {
@@ -407,7 +419,7 @@ async function loadAudioDevices() {
             } else {
                 socket.emit('stop_voice_agent');
                 stopAudioCapture();
-                startButton.textContent = 'Start Voice Agent';
+                startButton.textContent = 'Start voice agent';
                 statusDiv.textContent = 'Microphone: Not active';
                 isActive = false;
             }
@@ -732,21 +744,21 @@ async function loadAudioDevices() {
 
         function convertAnsiToHtml(text) {
             const ansiToHtml = {
-                // Dark mode colors
+                // Log colors are CSS variables (static/style.css) so they follow the brand
+                // palette and the page's theme; both sets point at the same variables.
                 dark: {
-                    '[38;5;231m': 'color: #fff;',     // WHITE
-                    '[38;5;116m': 'color: #87d7d7;',  // BLUE
-                    '[38;5;114m': 'color: #87d787;',  // GREEN
-                    '[38;5;183m': 'color: #d7afff;',  // VIOLET
-                    '[38;5;186m': 'color: #d7d787;',  // YELLOW
+                    '[38;5;231m': 'color: var(--log-default);',   // WHITE
+                    '[38;5;116m': 'color: var(--log-user);',      // BLUE: user / STT
+                    '[38;5;114m': 'color: var(--log-agent);',     // GREEN: agent / TTS
+                    '[38;5;183m': 'color: var(--log-function);',  // VIOLET: function calls
+                    '[38;5;186m': 'color: var(--log-latency);',   // YELLOW: latency
                 },
-                // Light mode colors (darker variants)
                 light: {
-                    '[38;5;231m': 'color: #000;',     // BLACK
-                    '[38;5;116m': 'color: #0086b3;',  // BLUE
-                    '[38;5;114m': 'color: #008744;',  // GREEN
-                    '[38;5;183m': 'color: #8b3d90;',  // VIOLET
-                    '[38;5;186m': 'color: #b36d00;',  // YELLOW
+                    '[38;5;231m': 'color: var(--log-default);',
+                    '[38;5;116m': 'color: var(--log-user);',
+                    '[38;5;114m': 'color: var(--log-agent);',
+                    '[38;5;183m': 'color: var(--log-function);',
+                    '[38;5;186m': 'color: var(--log-latency);',
                 },
                 // Reset is the same for both
                 '[0m': ''
@@ -777,7 +789,7 @@ async function loadAudioDevices() {
         socket.on('disconnect', () => {
             console.log('Disconnected from server');
             isActive = false;
-            startButton.textContent = 'Start Voice Agent';
+            startButton.textContent = 'Start voice agent';
             statusDiv.textContent = 'Microphone: Not active';
         });
 
@@ -973,12 +985,18 @@ async function loadAudioDevices() {
 
         const darkModeToggle = document.getElementById('darkMode');
         
+        // Theme: body.dark-mode for the page, data-theme on <html> for the kit's paper surface
+        function applyTheme(isDarkMode) {
+            document.body.classList.toggle('dark-mode', isDarkMode);
+            document.documentElement.setAttribute('data-theme', isDarkMode ? 'dark' : 'light');
+        }
+
         // Initialize theme
-        document.body.classList.toggle('dark-mode', darkModeToggle.checked);
+        applyTheme(darkModeToggle.checked);
         
         // Theme toggle handler
         darkModeToggle.addEventListener('change', () => {
-            document.body.classList.toggle('dark-mode', darkModeToggle.checked);
+            applyTheme(darkModeToggle.checked);
             
             // Save preference
             localStorage.setItem('darkMode', darkModeToggle.checked);
@@ -999,7 +1017,7 @@ async function loadAudioDevices() {
             if (savedDarkMode !== null) {
                 const isDarkMode = savedDarkMode === 'true';
                 darkModeToggle.checked = isDarkMode;
-                document.body.classList.toggle('dark-mode', isDarkMode);
+                applyTheme(isDarkMode);
             }
         });
 

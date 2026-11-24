@@ -1,0 +1,459 @@
+/*
+ * Deepgram brand CSS for pages with no build step: @deepgram-devs/dg-brand-ui's theme as plain CSS.
+ * Generated from src/styles/theme.css by `npm run build:brand-css`. Don't edit it; change the theme.
+ *
+ *   <link rel="stylesheet" href="vdui/brand.css">
+ *
+ * Variables: var(--color-magenta), var(--color-ink), var(--font-mono), var(--radius-card)...
+ * Classes: label, card, glass, landing-texture, stage-glow (call screens only), magenta-band, photo-scrim,
+ * bg-/text-/border-<color>, rounded-card, rounded-panel, font-sans, font-mono, animate-rise...
+ * It loads Work Sans and Azeret Mono from Google Fonts. It has no CSS reset, but it sets the page
+ * background and font, and its class names (card, label, glass...) clash with a page's own of the same name.
+ * The two textures load from textures/ beside this file: copy the folder with it.
+ * Dark theme: set data-theme="dark" on <html> and the paper surface flips. On paper, write text
+ * as text-fg / var(--color-fg), not ink.
+ * The React components need the kit itself; see the migrate-app skill.
+ */
+@import url("https://fonts.googleapis.com/css2?family=Azeret+Mono:wght@400;500;600&family=Work+Sans:ital,wght@0,400;0,500;0,600;1,400&display=swap");
+
+/*! tailwindcss v4.3.3 | MIT License | https://tailwindcss.com */
+:root, :host {
+  --color-ink: #1d1d1d;
+  --color-ink-2: #2a2927;
+  --color-ink-3: #3a3835;
+  --color-fg: #1d1d1d;
+  --color-paper: #fcfaf8;
+  --color-card: #fff;
+  --color-line: #e8e5e0;
+  --color-muted: #6b6862;
+  --color-faint: #a19d96;
+  --color-violet: #7f39ff;
+  --color-violet-2: #9152f6;
+  --color-violet-3: #a874ff;
+  --color-magenta: #e042ff;
+  --color-magenta-2: #c42fe0;
+  --color-lime: #7cd941;
+  --color-orange: #fa8100;
+  --color-red: #eb2a2e;
+  --color-ring-blue: #00b2ff;
+  --color-yellow: #f7f300;
+  --font-sans: var(--font-brand-sans, "Work Sans", ui-sans-serif, system-ui, sans-serif);
+  --font-mono: var(--font-brand-mono, "Azeret Mono", ui-monospace, monospace);
+  --radius-card: 1.25rem;
+  --radius-panel: 1.75rem;
+  --animate-caret: caret 1s steps(1) infinite;
+  --animate-glow: glow 2.6s ease-out 1;
+  --animate-rise: rise .45s ease-out both;
+  --animate-fade: fade .2s ease-out both;
+  --animate-slide: slide .25s ease-out both;
+}
+
+:root[data-theme="dark"] {
+  color-scheme: dark;
+  --color-fg: #fcfaf8;
+  --color-paper: #141413;
+  --color-card: #201f1e;
+  --color-line: #353331;
+  --color-muted: #a19d96;
+  --color-faint: #6b6862;
+}
+
+:root {
+  color-scheme: light;
+  --map-ground: #f1eee9;
+  --map-grid: #e2ded7;
+  --map-block: #e6e1d9;
+  --map-road: #fff;
+  --map-label: #6b6862;
+  --map-city: #8a857d;
+}
+
+:root[data-theme="dark"] {
+  --map-ground: #262422;
+  --map-grid: #2f2d2a;
+  --map-block: #312f2c;
+  --map-road: #45423e;
+  --map-label: #b4afa7;
+  --map-city: #8a857d;
+}
+
+@layer base {
+  html {
+    background: var(--color-paper);
+    color: var(--color-fg);
+    -webkit-font-smoothing: antialiased;
+  }
+
+  body {
+    min-height: 100dvh;
+    font-family: var(--font-sans);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *, :before, :after {
+    scroll-behavior: auto !important;
+    animation-duration: .01ms !important;
+    animation-iteration-count: 1 !important;
+  }
+}
+
+.animate-caret {
+  animation: var(--animate-caret);
+}
+
+.animate-fade {
+  animation: var(--animate-fade);
+}
+
+.animate-glow {
+  animation: var(--animate-glow);
+}
+
+.animate-rise {
+  animation: var(--animate-rise);
+}
+
+.animate-slide {
+  animation: var(--animate-slide);
+}
+
+.card {
+  background: var(--color-card);
+  border: 1px solid var(--color-line);
+  border-radius: var(--radius-card);
+}
+
+.rounded-card {
+  border-radius: var(--radius-card);
+}
+
+.rounded-panel {
+  border-radius: var(--radius-panel);
+}
+
+.border-card {
+  border-color: var(--color-card);
+}
+
+.border-faint {
+  border-color: var(--color-faint);
+}
+
+.border-fg {
+  border-color: var(--color-fg);
+}
+
+.border-ink {
+  border-color: var(--color-ink);
+}
+
+.border-ink-2 {
+  border-color: var(--color-ink-2);
+}
+
+.border-ink-3 {
+  border-color: var(--color-ink-3);
+}
+
+.border-lime {
+  border-color: var(--color-lime);
+}
+
+.border-line {
+  border-color: var(--color-line);
+}
+
+.border-magenta {
+  border-color: var(--color-magenta);
+}
+
+.border-magenta-2 {
+  border-color: var(--color-magenta-2);
+}
+
+.border-muted {
+  border-color: var(--color-muted);
+}
+
+.border-orange {
+  border-color: var(--color-orange);
+}
+
+.border-paper {
+  border-color: var(--color-paper);
+}
+
+.border-red {
+  border-color: var(--color-red);
+}
+
+.border-ring-blue {
+  border-color: var(--color-ring-blue);
+}
+
+.border-violet {
+  border-color: var(--color-violet);
+}
+
+.border-violet-2 {
+  border-color: var(--color-violet-2);
+}
+
+.border-violet-3 {
+  border-color: var(--color-violet-3);
+}
+
+.border-yellow {
+  border-color: var(--color-yellow);
+}
+
+.bg-card {
+  background-color: var(--color-card);
+}
+
+.bg-faint {
+  background-color: var(--color-faint);
+}
+
+.bg-fg {
+  background-color: var(--color-fg);
+}
+
+.bg-ink {
+  background-color: var(--color-ink);
+}
+
+.bg-ink-2 {
+  background-color: var(--color-ink-2);
+}
+
+.bg-ink-3 {
+  background-color: var(--color-ink-3);
+}
+
+.bg-lime {
+  background-color: var(--color-lime);
+}
+
+.bg-line {
+  background-color: var(--color-line);
+}
+
+.bg-magenta {
+  background-color: var(--color-magenta);
+}
+
+.bg-magenta-2 {
+  background-color: var(--color-magenta-2);
+}
+
+.bg-muted {
+  background-color: var(--color-muted);
+}
+
+.bg-orange {
+  background-color: var(--color-orange);
+}
+
+.bg-paper {
+  background-color: var(--color-paper);
+}
+
+.bg-red {
+  background-color: var(--color-red);
+}
+
+.bg-ring-blue {
+  background-color: var(--color-ring-blue);
+}
+
+.bg-violet {
+  background-color: var(--color-violet);
+}
+
+.bg-violet-2 {
+  background-color: var(--color-violet-2);
+}
+
+.bg-violet-3 {
+  background-color: var(--color-violet-3);
+}
+
+.bg-yellow {
+  background-color: var(--color-yellow);
+}
+
+.label {
+  font-family: var(--font-mono);
+  letter-spacing: .08em;
+  text-transform: uppercase;
+  font-size: .75rem;
+  font-weight: 500;
+  line-height: 1rem;
+}
+
+.font-mono {
+  font-family: var(--font-mono);
+}
+
+.font-sans {
+  font-family: var(--font-sans);
+}
+
+.text-card {
+  color: var(--color-card);
+}
+
+.text-faint {
+  color: var(--color-faint);
+}
+
+.text-fg {
+  color: var(--color-fg);
+}
+
+.text-ink {
+  color: var(--color-ink);
+}
+
+.text-ink-2 {
+  color: var(--color-ink-2);
+}
+
+.text-ink-3 {
+  color: var(--color-ink-3);
+}
+
+.text-lime {
+  color: var(--color-lime);
+}
+
+.text-line {
+  color: var(--color-line);
+}
+
+.text-magenta {
+  color: var(--color-magenta);
+}
+
+.text-magenta-2 {
+  color: var(--color-magenta-2);
+}
+
+.text-muted {
+  color: var(--color-muted);
+}
+
+.text-orange {
+  color: var(--color-orange);
+}
+
+.text-paper {
+  color: var(--color-paper);
+}
+
+.text-red {
+  color: var(--color-red);
+}
+
+.text-ring-blue {
+  color: var(--color-ring-blue);
+}
+
+.text-violet {
+  color: var(--color-violet);
+}
+
+.text-violet-2 {
+  color: var(--color-violet-2);
+}
+
+.text-violet-3 {
+  color: var(--color-violet-3);
+}
+
+.text-yellow {
+  color: var(--color-yellow);
+}
+
+.glass {
+  -webkit-backdrop-filter: blur(20px);
+  backdrop-filter: blur(20px);
+  background: #ffffff0d;
+  border: 1px solid #ffffff1a;
+}
+
+.photo-scrim {
+  background: linear-gradient(to bottom, transparent, #1d1d1d1a, var(--color-ink));
+}
+
+@media (min-width: 64rem) {
+  .photo-scrim {
+    background: linear-gradient(to bottom, #1d1d1db3, #1d1d1d99, var(--color-ink));
+  }
+}
+
+.landing-texture {
+  background: var(--color-ink) url("textures/landing.webp") center / cover no-repeat;
+}
+
+.magenta-band {
+  background: linear-gradient(120deg, #ea74ff 0%, #e042ff 45%, #c42fe0 100%);
+}
+
+.stage-glow {
+  background: var(--color-ink) url("textures/stage.webp") center / cover no-repeat;
+}
+
+@keyframes caret {
+  50% {
+    opacity: 0;
+  }
+}
+
+@keyframes glow {
+  0% {
+    box-shadow: 0 0 #e042ff8c;
+  }
+
+  25% {
+    box-shadow: 0 0 0 6px #e042ff59;
+  }
+
+  100% {
+    box-shadow: 0 0 #e042ff00;
+  }
+}
+
+@keyframes fade {
+  from {
+    opacity: 0;
+  }
+
+  to {
+    opacity: 1;
+  }
+}
+
+@keyframes slide {
+  from {
+    transform: translateX(100%);
+  }
+
+  to {
+    transform: none;
+  }
+}
+
+@keyframes rise {
+  from {
+    opacity: 0;
+    transform: translateY(8px);
+  }
+
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
